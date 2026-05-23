@@ -7,6 +7,7 @@ from unittest.mock import patch
 from urllib.parse import urlparse
 
 import pytest
+
 from cancelchain import create_app
 from cancelchain.block import Block
 from cancelchain.chain import REWARD, Chain

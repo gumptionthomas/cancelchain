@@ -2,6 +2,7 @@ import datetime
 from unittest.mock import patch
 
 import pytest
+
 from cancelchain.block import TXN_TIMEOUT, Block
 from cancelchain.chain import (
     CURMUDGEON_PER_GRUMBLE,

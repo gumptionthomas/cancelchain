@@ -1,6 +1,7 @@
 import logging
 
 import pytest
+
 from cancelchain.exceptions import InvalidKeyError
 from cancelchain.schema import validate_address_format
 from cancelchain.wallet import Wallet

@@ -1,6 +1,7 @@
 import datetime
 
 import pytest
+
 from cancelchain.block import MAX_TRANSACTIONS, TXN_TIMEOUT, Block
 from cancelchain.chain import GENESIS_HASH
 from cancelchain.exceptions import (

@@ -1,5 +1,6 @@
 import pytest
 import requests
+
 from cancelchain.api import API_TOKEN_SECONDS
 from cancelchain.api_client import ApiClient
 from cancelchain.miller import Miller

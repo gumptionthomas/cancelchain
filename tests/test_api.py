@@ -2,6 +2,7 @@ from urllib.parse import urljoin
 
 import pytest
 import requests
+
 from cancelchain.api import API_TOKEN_SECONDS
 from cancelchain.api_client import ApiClient
 from cancelchain.block import Block

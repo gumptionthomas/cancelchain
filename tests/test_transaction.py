@@ -1,4 +1,5 @@
 import pytest
+
 from cancelchain.exceptions import (
     InvalidSignatureError,
     InvalidTransactionError,
