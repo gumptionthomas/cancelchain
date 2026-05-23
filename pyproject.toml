@@ -1,11 +1,11 @@
 [build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+requires = ["uv_build>=0.5,<1.0"]
+build-backend = "uv_build"
 
 # PROJECT
 [project]
 name = "cancelchain"
-dynamic = ["version"]
+version = "1.4.1"
 description = "A Blockchain of Accountability, Forgiveness, and Support"
 readme = "README.rst"
 license = "MIT"
@@ -24,6 +24,8 @@ classifiers = [
   "Programming Language :: Python :: 3.9",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
   "Topic :: Sociology",
   "Operating System :: OS Independent",
 ]
@@ -59,37 +61,26 @@ Documentation = "https://docs.cancelchain.org"
 Source = "https://github.com/gumptionthomas/cancelchain"
 Tracker = "https://github.com/gumptionthomas/cancelchain/issues"
 
-# HATCH
-[tool.hatch.version]
-path = "src/cancelchain/__init__.py"
-
-[tool.hatch.build.targets.sdist]
-include = [
-  "/src",
-]
-exclude = [
-  "/.github",
-]
-
-[tool.hatch.envs.test]
-dependencies = [
-  "coverage[toml]>=7.2",
-  "pytest>=7.4",
-  "pytest-cov>=4.1",
+# DEPENDENCY GROUPS (PEP 735)
+[dependency-groups]
+dev = [
+  "pytest>=8",
+  "pytest-cov>=5",
   "pytest-dotenv>=0.5",
-  "requests-mock>=1.11",
-  "time-machine>=2.10",
-  "ruff>=0.0.275",
+  "requests-mock>=1.12",
+  "time-machine>=2.14",
+  "coverage[toml]>=7.5",
+  "ruff>=0.6",
+  "mypy>=1.10",
+  "pre-commit>=3.7",
 ]
-
-[tool.hatch.envs.test.scripts]
-run-coverage = "pytest --cov-config=pyproject.toml --cov=cancelchain"
-run = "run-coverage --no-cov"
 
 # RUFF
 [tool.ruff]
 target-version = "py39"
 line-length = 80
+
+[tool.ruff.lint]
 select = [
   "A",
   "B",
@@ -134,6 +125,9 @@ ignore = [
   "S110",
 ]
 
+[tool.ruff.format]
+quote-style = "single"
+
 # PYTEST
 [tool.pytest.ini_options]
 testpaths = [
@@ -142,7 +136,6 @@ testpaths = [
 filterwarnings = [
   "ignore:.*SelectableGroups dict interface is deprecated.*"
 ]
-# PYTEST-DOTENV
 env_files = [
   "tests/.test.env",
 ]
@@ -157,3 +150,11 @@ exclude_lines = [
   "no cov",
   "if __name__ == .__main__.:",
 ]
+
+# MYPY
+[tool.mypy]
+python_version = "3.9"
+warn_unused_ignores = true
+warn_redundant_casts = true
+strict_optional = true
+files = ["src/cancelchain"]

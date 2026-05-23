@@ -2,6 +2,7 @@ from urllib.parse import urljoin
 
 import pytest
 import requests
+
 from cancelchain.api import API_TOKEN_SECONDS
 from cancelchain.api_client import ApiClient
 from cancelchain.block import Block
@@ -47,8 +48,14 @@ def test_no_role(app, host, mill_block, requests_proxy, subject, wallet):
 
 
 def test_roles(
-    reader_wallet, app, miller_wallet, host, mill_block, requests_proxy,
-    transactor_wallet, wallet
+    reader_wallet,
+    app,
+    miller_wallet,
+    host,
+    mill_block,
+    requests_proxy,
+    transactor_wallet,
+    wallet,
 ):
     with app.app_context():
         m, b = mill_block(wallet)
@@ -79,9 +86,16 @@ def test_roles(
         with pytest.raises(requests.exceptions.HTTPError, match='405'):
             _ = ApiClient(host, transactor_wallet).post('/api/block/foo')
 
+
 def test_regex_roles(
-    reader_wallet, app, miller_wallet, host, mill_block, requests_proxy,
-    transactor_wallet, wallet
+    reader_wallet,
+    app,
+    miller_wallet,
+    host,
+    mill_block,
+    requests_proxy,
+    transactor_wallet,
+    wallet,
 ):
     with app.app_context():
         w = Wallet()
@@ -115,7 +129,7 @@ def test_no_auth(app, host, requests_proxy, wallet):
 def test_expired_auth(
     app, host, mill_block, requests_proxy, time_stepper, wallet
 ):
-    time_step = time_stepper(delta=API_TOKEN_SECONDS+1)
+    time_step = time_stepper(delta=API_TOKEN_SECONDS + 1)
     _ = next(time_step)
     client = ApiClient(host, wallet)
     with app.app_context():
