@@ -1,5 +1,5 @@
 coverage[toml]>=7.2.7
-pytest==7.4.0
+pytest==8.4.2
 pytest-cov==4.1.0
 pytest-dotenv==0.5.2
 requests-mock==1.11.0
