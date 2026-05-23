@@ -659,12 +659,20 @@ Write a file at `/home/gumptionthomas/Development/cancelchain/.pre-commit-config
 
 ```yaml
 repos:
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.6.0
+  - repo: local
     hooks:
       - id: ruff
-        args: [--fix]
+        name: ruff check
+        entry: uv run ruff check --fix
+        language: system
+        types_or: [python, pyi]
+        require_serial: true
       - id: ruff-format
+        name: ruff format
+        entry: uv run ruff format
+        language: system
+        types_or: [python, pyi]
+        require_serial: true
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.6.0
     hooks:
@@ -676,8 +684,9 @@ repos:
 ```
 
 Notes:
+- The ruff hooks use **local** entries that shell out to `uv run ruff …`. This guarantees pre-commit and the project use the **same** ruff binary (the one resolved by `uv sync --group dev`), eliminating version drift between pre-commit's pinned ruff and the project's installed ruff.
 - mypy intentionally omitted — too slow per-commit. CI handles it (Task 7).
-- The ruff `rev` is a known-good pin; `pre-commit autoupdate` can bump it later.
+- The `pre-commit-hooks` `rev` is a known-good pin; `pre-commit autoupdate` can bump it later.
 
 - [ ] **Step 2: Install the git hook locally**
 
@@ -693,14 +702,19 @@ Run:
 ```bash
 uv run pre-commit run --all-files
 ```
-Expected: each hook reports either `Passed` or `Skipped`. If any hook reports `Failed` and modifies files (e.g., trailing-whitespace or end-of-file-fixer), re-stage and re-run until everything passes:
 
-```bash
-git add -A
-uv run pre-commit run --all-files
-```
+**Expected outcome (this is a nuanced step — read carefully before reacting):**
 
-The `ruff-format` hook should be a no-op since Task 4 already formatted everything. The `trailing-whitespace` and `end-of-file-fixer` hooks may catch newline issues in YAML or RST files — let them fix and re-stage.
+- The `trailing-whitespace`, `end-of-file-fixer`, `check-yaml`, `check-toml`, and `check-merge-conflict` hooks should `Passed` (or briefly `Failed` once and auto-fix small newline/whitespace issues; re-stage and re-run those).
+- The `ruff-format` hook will report `Failed` *the first time* if `app.py` is reformatted. Task 4 scoped its format pass to `src/ tests/` and missed `app.py` at the repo root. Pre-commit's broader file selection catches it: the project's ruff will collapse a multi-line `app.run(...)` call onto a single line. Stage the resulting `app.py` and continue — this small fix legitimately belongs in Task 6's commit, since Task 6 is what surfaced it.
+- The `ruff` (check) hook will report `Failed` due to ~47 **pre-existing** lint errors in the codebase (S104 in `app.py`, F811 in `command.py`, PLR1704 in `node.py`, RUF015 in tests, etc.). These predate Phase 1 and are not in scope to fix here; the plan defers them to Phase 3 (type hints + lint cleanup). **Do not attempt to fix them.**
+
+So the acceptance criterion for Step 3 is:
+- `ruff-format` ultimately reports `Passed` after staging the `app.py` reformat (if any).
+- The filesystem-hygiene hooks (`trailing-whitespace`, `end-of-file-fixer`, `check-yaml`, `check-toml`, `check-merge-conflict`) ultimately report `Passed`.
+- `ruff` (check) is **allowed to remain `Failed`** on pre-existing errors. The hook is configured correctly; the developer would only encounter these failures on files they actually modify (pre-commit defaults to staged-only), so the hook is still useful in normal use. The `--all-files` run just exposes the existing debt.
+
+If `ruff-format` modifies a file other than `app.py` (e.g., one of the test files Task 4 already formatted), STOP and report BLOCKED — that would indicate a version drift between pre-commit's ruff and the project's ruff that the local-hooks config should have prevented.
 
 - [ ] **Step 4: Verify the test suite still passes**
 
@@ -708,21 +722,44 @@ Run:
 ```bash
 uv run pytest
 ```
-Expected: same baseline.
+Expected: 163 collected, 162 passed, 1 skipped.
 
 - [ ] **Step 5: Commit**
 
 Run:
 ```bash
-git add .pre-commit-config.yaml
+git status
+```
+
+Expected staged changes:
+- `.pre-commit-config.yaml` (new)
+- `app.py` (reformatted by ruff-format — Task 4 missed this)
+- Possibly minor whitespace/EOF fixes on a small number of non-Python files (`.test.env`, `.gitignore`, etc.) if `trailing-whitespace` or `end-of-file-fixer` corrected them
+
+If any `.py` file under `src/` or `tests/` is staged for modification, STOP and report BLOCKED — Task 4 already formatted those and nothing in Task 6 should re-touch them.
+
+Then:
+```bash
+git add .pre-commit-config.yaml app.py
 # Include any whitespace/EOF fixes that pre-commit applied:
 git add -A
-git commit -m "Add pre-commit hooks for ruff + filesystem hygiene
+git commit -m "Add pre-commit hooks and pick up app.py format fix
 
-Runs ruff check (with --fix), ruff format, and basic file hygiene
-hooks (trailing whitespace, end-of-file, YAML/TOML validity, merge
-conflict markers). mypy is excluded from pre-commit because it's
-too slow per commit; CI runs it instead.
+Adds .pre-commit-config.yaml with local ruff hooks (using uv run, so
+pre-commit and project share the same ruff binary) plus standard
+filesystem-hygiene hooks. mypy is excluded — too slow per-commit; CI
+runs it instead.
+
+Also picks up the app.py reformat that Task 4 missed (Task 4 scoped
+ruff format to src/ tests/, leaving app.py at the repo root untouched).
+The change collapses a 3-line app.run(...) call onto one line per the
+project's ruff format defaults.
+
+The ruff check hook is intentionally allowed to fail on the existing
+~47 pre-existing lint errors in the codebase. Phase 3 will address
+those alongside the type-hint campaign; until then the hook only
+gates files developers actively modify (pre-commit defaults to
+staged-only on normal git commit).
 
 Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
 ```
