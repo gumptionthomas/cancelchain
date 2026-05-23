@@ -16,5 +16,5 @@ pyjwt==2.7.0
 pymerkle>=4.0.0,<5.0
 python-dotenv==1.0.0
 requests==2.31.0
-rich==13.4.2
+rich==15.0.0
 sqlalchemy<2.0
