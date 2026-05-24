@@ -25,11 +25,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       # Third-party actions are pinned to commit SHAs (not tags) to defend
-      # against tag-retargeting supply-chain attacks. Bump via Dependabot.
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+      # against tag-retargeting supply-chain attacks. Trailing comments
+      # carry the exact released version so humans can read the diff;
+      # Dependabot (github-actions ecosystem) updates the SHA + comment
+      # together.
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
 
       - name: Set up Python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
         with:
           python-version: "3.13"
 
@@ -45,5 +48,13 @@ jobs:
             --no-dev \
             > requirements.audit.txt
 
+      # pip-audit is pinned to an exact version for deterministic CI.
+      # Bump manually (or surface to Dependabot by adding pip-audit to a
+      # tracked manifest like dependency-groups.dev). Installing via pip
+      # directly (rather than `uvx`) avoids an ensurepip subprocess that
+      # fails inside uv's ephemeral tool environment on GitHub runners.
+      - name: Install pip-audit
+        run: pip install pip-audit==2.10.0
+
       - name: Run pip-audit
-        run: uvx pip-audit --strict -r requirements.audit.txt
+        run: pip-audit --strict -r requirements.audit.txt
