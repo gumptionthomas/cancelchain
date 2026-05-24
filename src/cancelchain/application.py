@@ -39,8 +39,8 @@ def init_app(app, register_browser=True):
     @app.template_filter('utc_datetime')
     def utc_datetime(value, fmt='%a %b %d %H:%M:%S %Z'):
         if value.tzinfo is None or value.tzinfo.utcoffset(value) is None:
-            value = value.replace(tzinfo=datetime.timezone.utc)
-        value = value.astimezone(datetime.timezone.utc)
+            value = value.replace(tzinfo=datetime.UTC)
+        value = value.astimezone(datetime.UTC)
         return value.strftime(fmt) if value is not None else None
 
     @app.template_filter('human_subject')
