@@ -635,7 +635,7 @@ class ApiToken(db.Model):
         self.commit()
 
     def verify(self, secret):
-        if self.expired or not self.hashed:
+        if self.expired or not self.hashed or not isinstance(secret, str):
             return False
         try:
             return _PASSWORD_HASHER.verify(self.hashed, secret)
