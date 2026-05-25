@@ -112,6 +112,14 @@ class Transaction:
     outflows: list[Outflow] = field(default_factory=list, compare=False)
     version: str = field(default=VERSION_1, compare=False, repr=False)
 
+    def __post_init__(self) -> None:
+        # `wallet` is a non-field instance attribute set by `set_wallet()`.
+        # Initializing it in `__post_init__` (not as a dataclass field)
+        # keeps it out of `dataclasses.asdict()` — Wallet wraps an RSA
+        # key whose `__getstate__` raises, which would break deepcopy
+        # via asdict if walked.
+        self.wallet: Wallet | None = None
+
     @property
     def timestamp_dt(self) -> datetime | None:
         return iso_2_dt(self.timestamp) if self.timestamp else None
@@ -181,7 +189,7 @@ class Transaction:
     def sign(self) -> None:
         if not self.is_sealed:
             raise UnsealedTransactionError()
-        if not self.wallet:
+        if self.wallet is None:
             raise MissingWalletError()
         self.signature = self.wallet.sign(self.signing_data)
 
@@ -357,7 +365,14 @@ class PendingTxnSet(MutableSet[Transaction]):
                     ).commit()
 
     def discard(self, txn: Transaction) -> None:
-        PendingTxnDAO.get(txn.txid).delete()
+        # MutableSet.discard semantics: no-op if the element is absent.
+        # Guard txid (the dataclass declares it `str | None`) and the
+        # DAO lookup (returns None when the pending row isn't present).
+        if txn.txid is None:
+            return
+        dao = PendingTxnDAO.get(txn.txid)
+        if dao is not None:
+            dao.delete()
 
     def query_json(
         self,
