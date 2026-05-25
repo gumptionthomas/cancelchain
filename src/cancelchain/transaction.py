@@ -372,6 +372,14 @@ class PendingTxnSet(MutableSet[Transaction]):
         if txn.timestamp_dt is None:
             msg = 'Transaction missing timestamp'
             raise InvalidTransactionError(msg)
+        # Validate all inflow references BEFORE committing the
+        # PendingTxnDAO row. Otherwise a partial txn could persist
+        # without the corresponding PendingIOflowDAO spend-tracking
+        # rows, leaving pending-spend bookkeeping corrupt.
+        for idx, inflow in enumerate(txn.inflows):
+            if inflow.outflow_txid is None or inflow.outflow_idx is None:
+                msg = f'Inflow {idx} missing outflow reference'
+                raise InvalidTransactionError(msg)
         dao = PendingTxnDAO(
             txid=txn.txid,
             timestamp=txn.timestamp_dt,
@@ -379,11 +387,9 @@ class PendingTxnSet(MutableSet[Transaction]):
         )
         dao.commit()
         for inflow in txn.inflows:
-            if inflow.outflow_txid is None or inflow.outflow_idx is None:
-                continue
-            ioflow_txn_dao = TransactionDAO.get(inflow.outflow_txid)
+            ioflow_txn_dao = TransactionDAO.get(inflow.outflow_txid)  # type: ignore[arg-type]
             if ioflow_txn_dao is not None:
-                ioflow_dao = ioflow_txn_dao.outflows[inflow.outflow_idx]
+                ioflow_dao = ioflow_txn_dao.outflows[inflow.outflow_idx]  # type: ignore[index]
                 if ioflow_dao is not None:
                     PendingIOflowDAO(
                         txid=txn.txid,
