@@ -116,7 +116,7 @@ EOF
 - Modify: `pyproject.toml`
 - Modify: `src/cancelchain/schema.py`
 
-This PR introduces Pydantic as a runtime dependency and converts the 5 Marshmallow custom field subclasses (`Address`, `Base64`, `MillHash`, `Timestamp`, `PublicKey`) into `Annotated[str, AfterValidator(...)]` type aliases. The `SansNoneSchema` base class is retired. Marshmallow stays in `[project.dependencies]` for now — PR-6 removes it after the swap is complete.
+This PR introduces Pydantic as a runtime dependency and **adds** 5 Pydantic `Annotated[str, AfterValidator(...)]` aliases under `*Type` suffix names (`AddressType`, `Base64Type`, `MillHashType`, `TimestampType`, `PublicKeyType`) plus a `pydantic_errors_to_messages` adapter. **PR-1 is fully additive on `schema.py`** — the Marshmallow `Address(fields.String)`, `Base64(fields.String)`, `MillHash(Base64)`, `Timestamp(fields.String)`, `PublicKey(Base64)`, and `SansNoneSchema(Schema)` classes are NOT touched; they're still callable as Marshmallow fields by `payload.py` / `transaction.py` / `block.py` until PRs 3 and 4 swap those files. PR-6 deletes the Marshmallow classes after all consumers are gone. Marshmallow stays in `[project.dependencies]` throughout this PR.
 
 - [ ] **Step 1: Branch off main**
 
@@ -211,18 +211,29 @@ def pydantic_errors_to_messages(e: ValidationError) -> dict[str, Any]:
     """Convert Pydantic ValidationError to Marshmallow-shaped messages.
 
     Marshmallow's ValidationError.messages is a nested dict keyed by
-    field name; this matches what api.py's make_error_response and the
-    InvalidBlockError({...: e.messages}) re-raise wrappers expect.
+    field name (e.g. {'outflows': {0: {'amount': ['Must be ge 1']}}}).
+    This adapter rebuilds that nested shape from Pydantic's flat
+    err['loc'] tuples so api.py's make_error_response and the
+    InvalidBlockError({...: e.messages}) re-raise wrappers see the
+    same dict layout downstream consumers already render.
     """
     result: dict[str, Any] = {}
     for err in e.errors():
         loc = err.get('loc', ())
         msg = err.get('msg', 'invalid')
-        if loc:
-            key = '.'.join(str(part) for part in loc)
-        else:
-            key = '_schema'
-        result.setdefault(key, []).append(msg)
+        if not loc:
+            result.setdefault('_schema', []).append(msg)
+            continue
+        current = result
+        for part in loc[:-1]:
+            key = str(part)
+            existing = current.get(key)
+            if not isinstance(existing, dict):
+                current[key] = {}
+            current = current[key]
+        last_key = str(loc[-1])
+        bucket = current.setdefault(last_key, [])
+        bucket.append(msg)
     return result
 ```
 
@@ -1365,9 +1376,10 @@ Each of the 5 call sites updated to use Model.model_validate(
 _pydantic_validation_error adapter preserves the .messages attribute
 that make_error_response expects.
 
-Marshmallow import block removed from api.py. The Phase 1 spec's
-"Marshmallow → Pydantic" Phase 4 goal is now complete for src/;
-PR-6 finishes by removing marshmallow from runtime deps.
+Marshmallow import block removed from api.py. After this PR, api.py
+is marshmallow-free; schema.py still imports marshmallow (by design,
+since PR-1 is additive) until PR-6 deletes the Marshmallow classes
+and removes the runtime dep.
 
 Phase 4 / PR 5 of 6.
 
@@ -1387,7 +1399,7 @@ gh pr create --base main --title "feat(deps): API query schemas → Pydantic v2"
 - PendingTxnQueryModel uses \`Annotated[datetime, BeforeValidator(ciso_2_dt), PlainSerializer(dt_2_ciso)]\` to replace \`fields.Function\`.
 - Marshmallow import removed from \`api.py\`.
 
-After this PR, no \`src/cancelchain/\` file imports marshmallow. PR-6 removes the runtime dep + overrides.
+After this PR, \`api.py\` is marshmallow-free. \`schema.py\` still imports marshmallow (by design, since PR-1 is additive) until PR-6 deletes the Marshmallow classes and removes the runtime dep + overrides.
 
 Phase 4 / PR 5 of 6.
 
@@ -1465,7 +1477,7 @@ ignore_missing_imports = true
 ```
 from `[tool.mypy]` overrides.
 
-- [ ] **Step 4: Refresh the lockfile**
+- [ ] **Step 5: Refresh the lockfile**
 
 ```bash
 uv lock
@@ -1473,7 +1485,7 @@ grep -i marshmallow uv.lock
 ```
 Expected: `grep` returns no matches. The lockfile is regenerated without marshmallow.
 
-- [ ] **Step 5: Re-sync and verify**
+- [ ] **Step 6: Re-sync and verify**
 
 ```bash
 uv sync --group dev
@@ -1489,7 +1501,7 @@ uv run pytest
 ```
 All must exit 0.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
 git add pyproject.toml uv.lock src/cancelchain/schema.py
@@ -1520,7 +1532,7 @@ EOF
 )"
 ```
 
-- [ ] **Step 7: Push and open PR**
+- [ ] **Step 8: Push and open PR**
 
 ```bash
 git push -u origin chore/remove-marshmallow
@@ -1547,7 +1559,7 @@ EOF
 )"
 ```
 
-- [ ] **Step 8: Stop — controller handles wor + mwg + sync**
+- [ ] **Step 9: Stop — controller handles wor + mwg + sync**
 
 ---
 

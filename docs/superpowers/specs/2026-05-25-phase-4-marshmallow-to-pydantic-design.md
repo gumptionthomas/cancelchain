@@ -27,7 +27,7 @@ Concretely: after Phase 4, `[project.dependencies]` no longer contains `marshmal
 - **Scope: Path B (swap-in-place).** Considered Path A (replace dataclasses with `BaseModel`) and Path C (`pydantic.dataclasses.dataclass`); both conflict with the staged-construction lifecycle the domain types use. Path B is the minimum scope change that achieves the stated Phase 4 goal.
 - **PR strategy: bottom-up by dependency.** 6 PRs in `schema → payload → transaction → block → api → cleanup` order. Each PR is self-contained — no long-lived dual implementations.
 - **Pydantic version: `>=2.10`**. Pydantic v2.10 (2024-Q4) added the model-validator return-type contract and `Annotated[..., AfterValidator(...)]` ergonomics this design relies on.
-- **`@post_load` removal.** Marshmallow's `@post_load` makes `Schema().load(d)` return a domain instance. Pydantic v2 doesn't have a clean equivalent (a `@model_validator(mode='after')` that returns a different type would be confusing). Callers do the conversion explicitly: `Transaction(**TransactionModel.model_validate(d).model_dump())`. 3-4 call sites total; the explicit conversion clarifies the boundary.
+- **`@post_load` removal.** Marshmallow's `@post_load` makes `Schema().load(d)` return a domain instance. Pydantic v2 doesn't have a clean equivalent (a `@model_validator(mode='after')` that returns a different type would be confusing). Callers do the conversion explicitly. **Important:** when the model has nested-list fields (`inflows`, `outflows`, `txns`), `model_dump()` returns those as `list[dict]` — they need explicit reconstruction into `Inflow` / `Outflow` / `Transaction` dataclasses before being passed to the outer constructor. PR-3 introduces a `_txn_from_model_data` helper for this; PR-4 wraps it for the Block case. See the PR-3 and PR-4 sections below for the concrete patterns.
 - **`SansNoneSchema` retirement.** The "drop None on dump" behavior moves to the call site via `model.model_dump(exclude_none=True)` where needed; the existing `asdict_sans_none(dc)` utility (for dataclass `.to_dict()`) is unchanged.
 - **No long-lived parallel Marshmallow + Pydantic.** Each PR swaps its file's Schema(s) for Model(s) in one step; the file goes from "all Marshmallow" to "all Pydantic" in one commit. No transient "both work" gap.
 
@@ -298,10 +298,10 @@ try:
         request.args.to_dict(flat=True)
     ).model_dump(exclude_none=True)
 except ValidationError as e:
-    abort(make_error_response(e))
+    return make_error_response(_pydantic_validation_error(e))
 ```
 
-The `request.args.to_dict(flat=True)` flattens the `MultiDict` to a plain dict (each key's first value). None of the existing query schemas have list-valued fields (verified by grep), so flattening is safe.
+This matches the existing `return make_error_response(err)` pattern in `api.py` (the function expects an object with a `.messages` attribute, which is why we hand it the small `_pydantic_validation_error(e)` adapter — see PR-5 plan task for the helper definition). `request.args.to_dict(flat=True)` flattens the `MultiDict` to a plain dict (each key's first value). None of the existing query schemas have list-valued fields (verified by grep), so flattening is safe.
 
 For `PendingTxnQueryModel.earliest` (originally `fields.Function(serialize=lambda o: dt_2_ciso(o.earliest), deserialize=ciso_2_dt)`):
 
@@ -323,7 +323,7 @@ class PendingTxnQueryModel(BaseModel):
 
 The `BeforeValidator` runs `ciso_2_dt` on input strings; `PlainSerializer` runs `dt_2_ciso` on output. Same parse/format symmetry as `fields.Function` provided.
 
-`make_error_response(e)` is the existing api.py helper. It currently expects a `marshmallow.ValidationError` with `.messages`. Update it (or add a sibling) to format Pydantic `ValidationError.errors()` output into the same response shape.
+`make_error_response(err)` is the existing api.py helper. It expects an object with a `.messages` attribute. Rather than modifying `make_error_response`, PR-5 introduces a small `_pydantic_validation_error(e)` adapter that wraps a Pydantic `ValidationError` into an object with `.messages = pydantic_errors_to_messages(e)`. Same response shape; no Marshmallow API surface inside `api.py`.
 
 **Acceptance:** API endpoint tests pass; query-parameter validation rejects bad inputs with the same status codes (400) as before.
 
