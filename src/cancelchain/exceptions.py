@@ -1,11 +1,15 @@
+from __future__ import annotations
+
+
 class CCError(Exception):
-    def __init__(self, message=None):
-        msg = message or self.__class__.__name__
+    def __init__(self, message: str | bytes | list[str] | None = None) -> None:
+        msg: str | bytes | list[str] = message or self.__class__.__name__
         super().__init__(msg)
+        self.messages: list[str | bytes]
         if isinstance(msg, (str, bytes)):
             self.messages = [msg]
         else:
-            self.messages = msg
+            self.messages = list(msg)
 
 
 class InvalidWalletError(CCError):
