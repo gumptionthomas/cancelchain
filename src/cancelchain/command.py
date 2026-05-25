@@ -81,13 +81,25 @@ def host_api_client(
 ) -> ApiClient:
     if not host:
         host = current_app.config.get('DEFAULT_COMMAND_HOST')
+    if not host:
+        msg = (
+            'No host configured: pass --host or set '
+            'CC_DEFAULT_COMMAND_HOST in the environment.'
+        )
+        raise click.UsageError(msg)
     if wallet_file:
         wallet = Wallet.from_file(wallet_file)
     else:
-        host, address = host_address(host or '')
+        host, address = host_address(host)
         wallet = current_app.wallets.get(address)  # type: ignore[attr-defined]
+    if wallet is None:
+        msg = (
+            f'No wallet available for host {host}: pass --wallet-file or '
+            f'load a *.pem matching {address!r} into WALLET_DIR.'
+        )
+        raise click.UsageError(msg)
     return ApiClient(
-        host or '', wallet, timeout=current_app.config.get('API_CLIENT_TIMEOUT')
+        host, wallet, timeout=current_app.config.get('API_CLIENT_TIMEOUT')
     )
 
 

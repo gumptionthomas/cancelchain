@@ -58,15 +58,20 @@ class Node:
             visited_hosts.append(host)
         for peer in self.peers:
             host, _address = host_address(peer)
-            if host not in visited_hosts:
-                try:
-                    self.clients.get(peer).post_transaction(  # type: ignore[union-attr]
-                        txn, visited_hosts=visited_hosts
-                    )
-                except requests.RequestException as re:
-                    self.logger.warning(re)
-                except Exception as e:
-                    self.logger.exception(e)
+            if host in visited_hosts:
+                continue
+            client = self.clients.get(peer)
+            if client is None:
+                self.logger.warning(
+                    'send_transaction: no client configured for peer %s', peer
+                )
+                continue
+            try:
+                client.post_transaction(txn, visited_hosts=visited_hosts)
+            except requests.RequestException as re:
+                self.logger.warning(re)
+            except Exception as e:
+                self.logger.exception(e)
 
     def receive_transaction(
         self,
@@ -111,19 +116,26 @@ class Node:
             visited_hosts.append(host)
         for peer in self.peers:
             host, _address = host_address(peer)
-            if host not in visited_hosts:
-                try:
-                    r = self.clients.get(peer).post_block(  # type: ignore[union-attr]
-                        block,
-                        visited_hosts=visited_hosts,
-                        raise_for_status=False,
-                    )
-                    if r.status_code == 404:
-                        self.fill_peer(peer, block)
-                except requests.RequestException as re:
-                    self.logger.warning(re)
-                except Exception as e:
-                    self.logger.exception(e)
+            if host in visited_hosts:
+                continue
+            client = self.clients.get(peer)
+            if client is None:
+                self.logger.warning(
+                    'send_block: no client configured for peer %s', peer
+                )
+                continue
+            try:
+                r = client.post_block(
+                    block,
+                    visited_hosts=visited_hosts,
+                    raise_for_status=False,
+                )
+                if r.status_code == 404:
+                    self.fill_peer(peer, block)
+            except requests.RequestException as re:
+                self.logger.warning(re)
+            except Exception as e:
+                self.logger.exception(e)
 
     def receive_block(
         self,
@@ -190,8 +202,11 @@ class Node:
 
     def request_block(self, block_hash: str) -> Block | None:
         for peer in self.peers:
+            client = self.clients.get(peer)
+            if client is None:
+                continue
             try:
-                r = self.clients.get(peer).get_block(  # type: ignore[union-attr]
+                r = client.get_block(
                     block_hash=block_hash, raise_for_status=False
                 )
                 if r.status_code == 200:
@@ -225,10 +240,39 @@ class Node:
                 host, _ = host_address(self.host)
                 visited_hosts.append(host)
             client = self.clients.get(peer)
+            if client is None:
+                self.logger.warning(
+                    'fill_peer: no client configured for peer %s', peer
+                )
+                return
             while not accepted:
-                blocks.insert(0, block)  # type: ignore[arg-type]
-                block = Block.from_db(block.prev_hash)  # type: ignore[arg-type,union-attr]
-                r = client.post_block(  # type: ignore[union-attr]
+                if block is None:
+                    # Walked past the genesis block — `last_block.prev_hash`
+                    # chain terminates without a peer-acceptable ancestor.
+                    self.logger.warning(
+                        'fill_peer: exhausted chain to peer %s without '
+                        'a 2xx response; aborting',
+                        peer,
+                    )
+                    return
+                blocks.insert(0, block)
+                if is_genesis_block(block) or block.prev_hash is None:
+                    # Genesis has `prev_hash == GENESIS_HASH` (a sentinel
+                    # that won't resolve to a stored Block); a missing
+                    # `prev_hash` similarly has no parent to walk to.
+                    # Stop before the next from_db lookup returns None.
+                    block = None
+                    break
+                block = Block.from_db(block.prev_hash)
+                if block is None:
+                    self.logger.warning(
+                        'fill_peer: chain walk for peer %s hit a missing '
+                        'parent (prev_hash=%s)',
+                        peer,
+                        blocks[0].prev_hash,
+                    )
+                    return
+                r = client.post_block(
                     block, visited_hosts=visited_hosts, raise_for_status=False
                 )
                 if r.status_code in [200, 201, 202]:
@@ -239,7 +283,7 @@ class Node:
                 accepted = False
                 delay = 0
                 while not accepted:
-                    r = client.post_block(  # type: ignore[union-attr]
+                    r = client.post_block(
                         block,
                         visited_hosts=visited_hosts,
                         raise_for_status=False,

@@ -5,7 +5,7 @@ import re
 from collections.abc import Callable
 from enum import Enum
 from functools import wraps
-from typing import Any
+from typing import Any, NoReturn
 from urllib.parse import urljoin
 
 import jwt
@@ -64,10 +64,19 @@ def queue_post_process(
 ) -> None:
     host, address = host_address(current_app.config['NODE_HOST'])
     wallet: Wallet | None = current_app.wallets.get(address)  # type: ignore[attr-defined]
+    if wallet is None:
+        # No wallet for this node's NODE_HOST address means we can't sign
+        # an outbound peer request. Log and skip rather than crash on a
+        # later ApiClient call.
+        current_app.logger.warning(
+            'queue_post_process: no wallet for node address %s; skipping',
+            address,
+        )
+        return
     headers: dict[str, str] | None = None
     if vhosts:
         headers = {PEER_HOST_HEADER: ','.join(vhosts)}
-    headers = ApiClient(host, wallet).auth_header(headers=headers)  # type: ignore[arg-type]
+    headers = ApiClient(host, wallet).auth_header(headers=headers)
     url = urljoin(host, path)
     http_post_signal.send(
         current_app._get_current_object(),  # type: ignore[attr-defined]
@@ -116,7 +125,7 @@ def make_error_response(e: Any) -> Response:
     return make_json_response({'error': e.messages}, 400)
 
 
-def exception_response(e: Exception) -> None:
+def exception_response(e: Exception) -> NoReturn:
     current_app.logger.exception(e)
     abort(500)
 
@@ -382,7 +391,6 @@ class TransferTxnView(MethodView):
             return make_error_response(err)
         except Exception as e:
             exception_response(e)
-        abort(500)  # unreachable but satisfies return type
 
 
 blueprint.add_url_rule(
@@ -418,7 +426,6 @@ class SubjectTxnView(MethodView):
             return make_error_response(err)
         except Exception as e:
             exception_response(e)
-        abort(500)  # unreachable but satisfies return type
 
 
 blueprint.add_url_rule(
@@ -448,7 +455,6 @@ class ForgiveTxnView(MethodView):
             return make_error_response(err)
         except Exception as e:
             exception_response(e)
-        abort(500)  # unreachable but satisfies return type
 
 
 blueprint.add_url_rule(
@@ -478,7 +484,6 @@ class SupportTxnView(MethodView):
             return make_error_response(err)
         except Exception as e:
             exception_response(e)
-        abort(500)  # unreachable but satisfies return type
 
 
 blueprint.add_url_rule(
@@ -514,7 +519,6 @@ class PendingTxnView(MethodView):
             return make_error_response(err)
         except Exception as e:
             exception_response(e)
-        abort(500)  # unreachable but satisfies return type
 
 
 blueprint.add_url_rule(
@@ -542,7 +546,6 @@ class WalletBalanceView(MethodView):
             return make_error_response(err)
         except Exception as e:
             exception_response(e)
-        abort(500)  # unreachable but satisfies return type
 
 
 blueprint.add_url_rule(
@@ -572,7 +575,6 @@ class SubjectBalanceView(MethodView):
             return make_error_response(err)
         except Exception as e:
             exception_response(e)
-        abort(500)  # unreachable but satisfies return type
 
 
 blueprint.add_url_rule(
@@ -602,7 +604,6 @@ class SubjectSupportView(MethodView):
             return make_error_response(err)
         except Exception as e:
             exception_response(e)
-        abort(500)  # unreachable but satisfies return type
 
 
 blueprint.add_url_rule(
