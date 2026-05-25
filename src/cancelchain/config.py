@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass, field, fields
-from typing import ClassVar
+from typing import ClassVar, Self
 
 
 @dataclass
@@ -15,7 +15,7 @@ class EnvironSettings:
         return os.environ.get(f'{cls._prefix}{name}')
 
     @classmethod
-    def from_env(cls) -> EnvironSettings:
+    def from_env(cls) -> Self:
         c = cls()
         for f in fields(c):
             if (v := cls.getenv(f.name)) is not None:

@@ -13,7 +13,11 @@ Message = str | bytes | list[Any] | dict[str, Any]
 
 class CCError(Exception):
     def __init__(self, message: Message | None = None) -> None:
-        msg: Message = message or self.__class__.__name__
+        # Use `is None` instead of truthy check so empty containers
+        # ({}, [], "", b"") aren't silently replaced with the class name —
+        # an intentionally-empty validation-error dict, for example, is
+        # a valid message payload.
+        msg: Message = self.__class__.__name__ if message is None else message
         super().__init__(msg)
         self.messages: Message
         if isinstance(msg, (str, bytes)):
