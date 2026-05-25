@@ -1,3 +1,5 @@
+from conftest import TEST_SECRET_KEY
+
 from cancelchain.config import EnvAppSettings
 
 
@@ -10,4 +12,4 @@ def test_environ_settings():
 
 
 def test_flask_config(config_app):
-    assert config_app.config.get('SECRET_KEY') == 'testkey'
+    assert config_app.config.get('SECRET_KEY') == TEST_SECRET_KEY

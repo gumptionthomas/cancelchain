@@ -28,6 +28,8 @@ SUBJECT_RAW = 'failing tests'
 SUBJECT_1 = encode_subject('bugs')
 SUBJECT_2 = encode_subject('vogons')
 TXID_1 = '0' * 64
+# HS256 requires ≥32 bytes; this is 40 bytes for safety (>1x minimum)
+TEST_SECRET_KEY = 'test-secret-key-for-phase-3-32bytes'
 WALLET_PRIVATE_KEY_B58 = (
     '7LsR8WfToH83zUcc8BQNYUMAPr2BTGMunRYSi8iq9sgimBs3hftZSZ2EjnLd5HwdUhNMQYv'
     '3QPgNKsoA8eg5nuQCJ2FjzWjGsRNdPh1zuUDfAcpCt3uSrU3s46kj5HvumYVwkVxh4kXj3t'
@@ -374,7 +376,7 @@ def app(
             config_map={
                 'TESTING': True,
                 'WTF_CSRF_ENABLED': False,
-                'SECRET_KEY': 'shhhhh',
+                'SECRET_KEY': TEST_SECRET_KEY,
                 'SQLALCHEMY_DATABASE_URI': db_uri,
                 'NODE_HOST': f'http://{host_netloc}',
                 'PEERS': [peer_host],
@@ -406,7 +408,7 @@ def remote_app(miller_2_wallet, miller_wallet, wallet):
             config_map={
                 'TESTING': True,
                 'WTF_CSRF_ENABLED': False,
-                'SECRET_KEY': 'shhhhh',
+                'SECRET_KEY': TEST_SECRET_KEY,
                 'SQLALCHEMY_DATABASE_URI': db_uri,
                 'NODE_HOST': f'http://{remote_host_netloc}',
                 'PEERS': [peer_host],
