@@ -151,7 +151,7 @@ from typing import Annotated, Any
 from pydantic import AfterValidator, ValidationError
 ```
 
-Then **append** these blocks to the end of the file (after the existing `PublicKey(Base64)` class definition):
+Then **append** these blocks at the very end of `schema.py` (after the existing `SansNoneSchema(Schema)` class definition — `schema.py` currently ends with `SansNoneSchema`, which itself comes after `PublicKey(Base64)`. Don't insert mid-file between them):
 
 ```python
 # --- Pydantic v2 custom type aliases (introduced in Phase 4 / PR-1).
@@ -210,12 +210,16 @@ PublicKeyType = Annotated[str, AfterValidator(_check_public_key)]
 def pydantic_errors_to_messages(e: ValidationError) -> dict[str, Any]:
     """Convert Pydantic ValidationError to Marshmallow-shaped messages.
 
-    Marshmallow's ValidationError.messages is a nested dict keyed by
-    field name (e.g. {'outflows': {0: {'amount': ['Must be ge 1']}}}).
-    This adapter rebuilds that nested shape from Pydantic's flat
-    err['loc'] tuples so api.py's make_error_response and the
-    InvalidBlockError({...: e.messages}) re-raise wrappers see the
-    same dict layout downstream consumers already render.
+    Rebuilds a nested dict from Pydantic's flat err['loc'] tuples so
+    api.py's make_error_response and the InvalidBlockError({...: e.messages})
+    re-raise wrappers see the same nested layout downstream consumers
+    already render. List indices in `loc` are stringified, since the
+    resulting dict will be JSON-serialized to clients anyway (Marshmallow
+    keeps integer keys in-Python; we don't — they're indistinguishable
+    on the wire).
+
+    Example output for outflows[0].amount failing Field(ge=1):
+        {'outflows': {'0': {'amount': ['Input should be greater than or equal to 1']}}}
     """
     result: dict[str, Any] = {}
     for err in e.errors():
