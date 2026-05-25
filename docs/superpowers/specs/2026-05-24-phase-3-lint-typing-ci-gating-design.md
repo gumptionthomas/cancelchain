@@ -44,7 +44,7 @@ warning: The `flake8-quotes.inline-quotes="double"` option is incompatible with 
 The `Q000` ignore in `[tool.ruff.lint] ignore` already exists; the warning still fires because `flake8-quotes` rules are implicitly active for the `Q` category. Fix is either to explicitly disable `flake8-quotes` settings or set `[tool.ruff.lint.flake8-quotes] inline-quotes = "single"` to match the formatter.
 
 **Changes:**
-- Set `[tool.ruff.lint.flake8-quotes] inline-quotes = "single"` (or remove `Q003` from the rule selection set if no longer needed).
+- Set `[tool.ruff.lint.flake8-quotes] inline-quotes = "single"` (or, alternatively, add `Q003` to the `[tool.ruff.lint] ignore` list to suppress that rule directly — the ruff config selects the whole `Q` category via `select = [..., "Q", ...]`, so disabling a single rule means adding it to `ignore`).
 - Drop the now-redundant `Q000` from the `[tool.ruff.lint] ignore` list (after confirming `ruff check` still passes — `Q000` only fires when the quote-style mismatch is the source).
 
 **Source code:** none.
@@ -87,7 +87,13 @@ The `Q000` ignore in `[tool.ruff.lint] ignore` already exists; the warning still
 - Use `collections.abc` for `Iterable`, `Iterator`, `Mapping`, `Sequence` (not `typing`).
 - Prefer `X | None` over `Optional[X]`.
 - Type return values explicitly even when `-> None`.
-- For Marshmallow schemas (`schema.py:SansNoneSchema`, `MillHash`, `Address`, etc.): leave the schema field definitions as-is; type any utility functions in that module (e.g., `asdict_sans_none`, `validate_address`, etc.).
+- For Marshmallow schemas (`schema.py:SansNoneSchema`, `MillHash`, `Address`, etc.): leave the schema field definitions as-is; type any utility functions in that module (e.g., `asdict_sans_none`, `validate_address`, etc.). Type the one `@post_dump`-decorated method on `SansNoneSchema` (`remove_none_values`) with `dict[str, Any]` for the data dict.
+
+**Marshmallow + mypy interaction (introduced here because schema.py is the first typed file touching Marshmallow; reused by PR-5):** the marshmallow stubs (marshmallow-stubs package) aren't installed by default. Either:
+- Add `marshmallow-stubs` to `[dependency-groups].dev` (recommended).
+- Or set `[[tool.mypy.overrides]] module = "marshmallow.*"` `ignore_missing_imports = true`.
+
+The recommended path is the stubs package; mypy strict's `disallow_any_generics` makes the `ignore_missing_imports` shortcut leak `Any` types through Marshmallow boundaries. The chosen approach is single-PR-owned by PR-4 so PR-5 inherits cleanly without further dev-dep edits.
 
 **Files chosen first because:**
 - They have few or no inter-module dependencies (leaves of the dependency graph).
@@ -103,14 +109,8 @@ The `Q000` ignore in `[tool.ruff.lint] ignore` already exists; the warning still
 **Approach:**
 - Annotate the dataclass methods (`to_dict`, `to_json`, `from_json`, `to_dao`, `from_dao`, `to_db`, `from_db`).
 - Annotate validators (`validate_address`, `validate_coinbase`, etc.) and helpers (`mill_hash_str`, `validate_hash_diff`).
-- Mark Marshmallow `Schema` subclasses' typed methods (e.g., `@post_dump`, `@post_load`, `@validates_schema` decorated methods) with proper signatures: `def remove_none_values(self, data: dict[str, Any], **kwargs: Any) -> dict[str, Any]:` etc.
+- Mark Marshmallow `Schema` subclasses' typed methods (e.g., `@post_dump`, `@post_load`, `@validates_schema` decorated methods) with proper signatures: `def make_block(self, data: dict[str, Any], **kwargs: Any) -> Block:` etc. Uses the marshmallow stubs added by PR-4 — no dev-dep changes in this PR.
 - Wallet RSA/AES surface in `wallet.py` produces `bytes` and `str` — annotate carefully. Internal `pycryptodome` types stay as-is (Phase 5 swaps the library).
-
-**Marshmallow + mypy interaction:** the marshmallow stubs (marshmallow-stubs package) aren't installed by default. Either:
-- Add `marshmallow-stubs` to `[dependency-groups].dev` (recommended).
-- Or set `[[tool.mypy.overrides]] module = "marshmallow.*"` `ignore_missing_imports = true`.
-
-The recommended path is the stubs package; mypy strict's `disallow_any_generics` makes the `ignore_missing_imports` shortcut leak `Any` types through Marshmallow boundaries.
 
 **Acceptance:** `uv run mypy src` errors in these files reach 0. Test suite green.
 
@@ -213,7 +213,7 @@ Notes:
 
 - No source edits to `models.py` beyond the `Mapped[]` conversion in PR-6. In particular, no `.query.filter_by()` → `db.session.execute(db.select())` modernization (that's a separate later phase).
 - No new abstractions, no new modules, no API redesigns. Phase 3 is "type what's there" not "rebuild what's there."
-- No changes to `[project.dependencies]`. The dev group may gain `marshmallow-stubs` in PR-5 if we choose the stubs path over the ignore_missing_imports shortcut.
+- No changes to `[project.dependencies]`. The dev group may gain `marshmallow-stubs` in PR-4 if we choose the stubs path over the ignore_missing_imports shortcut.
 - No removal of legacy DAO patterns (`backref`, `secondary` for many-to-many association tables). Those stay; Phase 6's query modernization will revisit.
 
 ## Risks and mitigations
@@ -242,7 +242,7 @@ Notes:
 ## Open decisions (resolve at PR time)
 
 - PR-1: which exact ruff config change (drop `Q000` from ignore vs. set `[tool.ruff.lint.flake8-quotes]` config block). Decided after running ruff 0.15 against the current code.
-- PR-5: `marshmallow-stubs` vs. `[[tool.mypy.overrides]] ignore_missing_imports = true` for the Marshmallow boundary. Decided after attempting the stubs and measuring friction.
+- PR-4: `marshmallow-stubs` vs. `[[tool.mypy.overrides]] ignore_missing_imports = true` for the Marshmallow boundary (introduced in PR-4 because schema.py contains the first Marshmallow Schema subclass that gets typed; PR-5 inherits the choice). Decided after attempting the stubs and measuring friction.
 - PR-7: monolithic vs. 7a/7b split. Decided based on diff size at draft time.
 - PR-9: changing the test secret may break any test fixture that hardcodes `'testkey'` literally. Decided after grep at PR time.
 
