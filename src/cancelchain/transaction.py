@@ -224,14 +224,25 @@ class Transaction:
 
     def to_dao(self) -> TransactionDAO:
         # to_dao() is only meaningful after the txn has been sealed: txid
-        # is computed and outflow amounts are set. The dataclass declares
-        # these as Optional to allow staged construction; assert them here
-        # so mypy strict can narrow at the domain↔DAO boundary.
+        # is computed and all in/outflow identity fields are set. The
+        # dataclass declares them Optional to allow staged construction;
+        # validate them here so mypy strict can narrow at the domain↔DAO
+        # boundary AND the persisted row matches the txid signing data
+        # (silently dropping inflows or zero-coercing amounts would break
+        # both invariants — see PR #47 review).
         if self.txid is None:
             raise UnsealedTransactionError()
         if self.timestamp_dt is None:
             msg = 'Transaction missing timestamp'
             raise InvalidTransactionError(msg)
+        for idx, inflow in enumerate(self.inflows):
+            if inflow.outflow_txid is None or inflow.outflow_idx is None:
+                msg = f'Inflow {idx} missing outflow reference'
+                raise InvalidTransactionError(msg)
+        for idx, outflow in enumerate(self.outflows):
+            if outflow.amount is None:
+                msg = f'Outflow {idx} missing amount'
+                raise InvalidTransactionError(msg)
         txid = self.txid
         timestamp_dt = self.timestamp_dt
         return TransactionDAO.get(txid) or TransactionDAO(
@@ -242,16 +253,14 @@ class Transaction:
             public_key=self.public_key,
             signature=self.signature,
             inflow_daos=[
-                InflowDAO(txid, idx, inflow.outflow_txid, inflow.outflow_idx)
+                InflowDAO(txid, idx, inflow.outflow_txid, inflow.outflow_idx)  # type: ignore[arg-type]
                 for idx, inflow in enumerate(self.inflows)
-                if inflow.outflow_txid is not None
-                and inflow.outflow_idx is not None
             ],
             outflow_daos=[
                 OutflowDAO(
                     txid,
                     idx,
-                    outflow.amount if outflow.amount is not None else 0,
+                    outflow.amount,  # type: ignore[arg-type]
                     address=outflow.address,
                     subject=outflow.subject,
                     forgive=outflow.forgive,
@@ -360,8 +369,13 @@ class PendingTxnSet(MutableSet[Transaction]):
     def add(self, txn: Transaction) -> None:
         if txn.txid is None:
             raise UnsealedTransactionError()
+        if txn.timestamp_dt is None:
+            msg = 'Transaction missing timestamp'
+            raise InvalidTransactionError(msg)
         dao = PendingTxnDAO(
-            txid=txn.txid, timestamp=txn.timestamp_dt, json_data=txn.to_json()
+            txid=txn.txid,
+            timestamp=txn.timestamp_dt,
+            json_data=txn.to_json(),
         )
         dao.commit()
         for inflow in txn.inflows:
