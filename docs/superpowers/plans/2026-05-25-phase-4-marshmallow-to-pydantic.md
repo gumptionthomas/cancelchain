@@ -33,23 +33,24 @@
 | 4 | PR-3 transaction.py | `src/cancelchain/transaction.py` |
 | 5 | PR-4 block.py | `src/cancelchain/block.py` |
 | 6 | PR-5 api.py | `src/cancelchain/api.py` |
-| 7 | PR-6 cleanup | `pyproject.toml`, `src/cancelchain/schema.py`, `src/cancelchain/transaction.py`, `src/cancelchain/payload.py` (verify directive removal) |
+| 7 | PR-6 cleanup | `pyproject.toml`, `src/cancelchain/schema.py` (delete Marshmallow classes); verify-only: `src/cancelchain/transaction.py`, `src/cancelchain/payload.py`, `src/cancelchain/block.py` (PR-3/PR-4 directive removal) |
 | 8 | acceptance | none (verification only) |
 
 ---
 
 ## Task 1: Ship the docs PR (spec + plan)
 
-**Files:** Modify: nothing. The design spec is already committed on `docs/phase-4-design` as `a644741`. This task adds the implementation plan and ships them together.
+**Files:** Modify: nothing. The design spec is already committed on `docs/phase-4-design`. This task adds the implementation plan and ships them together.
 
 - [ ] **Step 1: Confirm branch state**
 
 Run:
 ```bash
 git rev-parse --abbrev-ref HEAD
-git log --oneline main..HEAD
+git ls-files docs/superpowers/specs/2026-05-25-phase-4-marshmallow-to-pydantic-design.md
+git rev-list --count main..HEAD
 ```
-Expected: branch is `docs/phase-4-design`; one commit above main: `a644741 docs(phase-4): add Phase 4 Marshmallow → Pydantic v2 design spec`.
+Expected: current branch is `docs/phase-4-design`; the spec file path is tracked (returned by `git ls-files`); commit count above main is `1` (the design-spec commit). These checks are SHA-independent — they keep working after squash-merges or rebases.
 
 - [ ] **Step 2: Verify the plan file is present**
 
