@@ -93,23 +93,26 @@ def test_outflow_model_rejects_address_and_subject(wallet):
     subject = encode_subject('test')
     with pytest.raises(PydanticValidationError) as exc_info:
         OutflowModel(amount=5, address=wallet.address, subject=subject)
-    messages = str(exc_info.value)
-    assert INVALID_DESTINATION_MSG in messages
+    assert any(
+        INVALID_DESTINATION_MSG in err['msg'] for err in exc_info.value.errors()
+    )
 
 
 def test_outflow_model_rejects_two_subject_options():
     subj = encode_subject('test')
     with pytest.raises(PydanticValidationError) as exc_info:
         OutflowModel(amount=5, subject=subj, forgive=subj)
-    messages = str(exc_info.value)
-    assert INVALID_DESTINATION_MSG in messages
+    assert any(
+        INVALID_DESTINATION_MSG in err['msg'] for err in exc_info.value.errors()
+    )
 
 
 def test_outflow_model_rejects_no_destination(wallet):
     with pytest.raises(PydanticValidationError) as exc_info:
         OutflowModel(amount=5)
-    messages = str(exc_info.value)
-    assert INVALID_DESTINATION_MSG in messages
+    assert any(
+        INVALID_DESTINATION_MSG in err['msg'] for err in exc_info.value.errors()
+    )
 
 
 def test_outflow_model_rejects_zero_amount(wallet):
