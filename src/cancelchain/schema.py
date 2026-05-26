@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 # mypy: disable-error-code="no-untyped-call,no-any-return"
+from collections.abc import Sequence
 from dataclasses import asdict
 from typing import Annotated, Any, Protocol
 
 from marshmallow import Schema, fields, post_dump, validate
 from pydantic import AfterValidator
+from pydantic_core import ErrorDetails
 
 from cancelchain.exceptions import InvalidKeyError
 from cancelchain.util import iso_2_dt
@@ -199,7 +201,7 @@ class _ErrorsAware(Protocol):
     synthetic test fakes can satisfy it without subclassing.
     """
 
-    def errors(self) -> list[Any]: ...
+    def errors(self) -> Sequence[ErrorDetails]: ...
 
 
 def pydantic_errors_to_messages(e: _ErrorsAware) -> dict[str, Any]:

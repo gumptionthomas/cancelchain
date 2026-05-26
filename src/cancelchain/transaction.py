@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 # mypy: disable-error-code="no-untyped-call,no-any-return"
+import json
 from collections.abc import Generator, Iterator, MutableSet
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -111,9 +112,11 @@ def txn_from_model_data(data: dict[str, Any]) -> dict[str, Any]:
     Public — PR-4 (block.py) imports this to reconstruct nested
     Transactions from BlockModel.model_dump() output.
     """
-    data['inflows'] = [Inflow(**i) for i in data.get('inflows', [])]
-    data['outflows'] = [Outflow(**o) for o in data.get('outflows', [])]
-    return data
+    return {
+        **data,
+        'inflows': [Inflow(**i) for i in data.get('inflows', [])],
+        'outflows': [Outflow(**o) for o in data.get('outflows', [])],
+    }
 
 
 class TransactionModel(BaseModel):
@@ -270,9 +273,7 @@ class Transaction:
         return asdict_sans_none(self)
 
     def to_json(self) -> str:
-        return TransactionModel.model_validate(self.to_dict()).model_dump_json(
-            exclude_none=True
-        )
+        return json.dumps(self.to_dict())
 
     def to_dao(self) -> TransactionDAO:
         # to_dao() is only meaningful after the txn has been sealed: txid
@@ -343,7 +344,7 @@ class Transaction:
         except ValidationError as e:
             raise InvalidTransactionError(pydantic_errors_to_messages(e)) from e
         except JSONDecodeError as e:
-            raise InvalidTransactionError(str(e)) from e
+            raise InvalidTransactionError(e.msg) from e
         return cls(**txn_from_model_data(model.model_dump()))
 
     @classmethod
