@@ -3,9 +3,10 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Callable
+from datetime import datetime
 from enum import Enum
 from functools import wraps
-from typing import Any, NoReturn
+from typing import Annotated, Any, NoReturn
 from urllib.parse import urljoin
 
 import jwt
@@ -18,7 +19,14 @@ from flask import (
     request,
 )
 from flask.views import MethodView
-from marshmallow import Schema, ValidationError, fields, validate
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    BeforeValidator,
+    ConfigDict,
+    Field,
+    ValidationError,
+)
 
 from cancelchain.api_client import PEER_HOST_HEADER, ApiClient
 from cancelchain.block import TXN_TIMEOUT, Block
@@ -28,15 +36,38 @@ from cancelchain.exceptions import CCError, EmptyChainError, MissingBlockError
 from cancelchain.models import ApiToken
 from cancelchain.node import Node
 from cancelchain.payload import encode_subject, validate_raw_subject
-from cancelchain.schema import validate_address_format, validate_public_key
+from cancelchain.schema import (
+    AddressType,
+    PublicKeyType,
+    pydantic_errors_to_messages,
+    truncate,
+)
 from cancelchain.signals import http_post as http_post_signal
 from cancelchain.tasks import post_process
-from cancelchain.util import ciso_2_dt, dt_2_ciso, host_address, now, now_iso
+from cancelchain.util import ciso_2_dt, host_address, now, now_iso
 from cancelchain.wallet import Wallet
 
 API_TOKEN_SECONDS = 60 * 60 * 4
 
 blueprint = Blueprint('api', __name__)
+
+
+class _AdaptedValidationError(Exception):
+    """Adapter that satisfies make_error_response's ``.messages`` contract.
+
+    make_error_response expects a Marshmallow-style ValidationError with
+    a .messages attribute (nested dict shape). Instantiate this once per
+    Pydantic ValidationError instead of building a new Exception subclass
+    on every failure.
+    """
+
+    def __init__(self, messages: dict[str, Any]) -> None:
+        super().__init__()
+        self.messages = messages
+
+
+def _pydantic_validation_error(e: ValidationError) -> _AdaptedValidationError:
+    return _AdaptedValidationError(pydantic_errors_to_messages(e))
 
 
 def node_lc_dao() -> tuple[Node, Chain | None, Any]:
@@ -367,16 +398,24 @@ blueprint.add_url_rule(
 )
 
 
-class TransferTxnQuerySchema(Schema):
-    public_key = fields.String(required=True, validate=validate_public_key)
-    amount = fields.Integer(required=True, validate=validate.Range(min=1))
-    address = fields.String(required=True, validate=validate_address_format)
+class TransferTxnQueryModel(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    public_key: PublicKeyType
+    amount: int = Field(ge=1)
+    address: AddressType
 
 
 class TransferTxnView(MethodView):
     def get(self, **kwargs: Any) -> Response:
         try:
-            args = TransferTxnQuerySchema().load(request.args)
+            model = TransferTxnQueryModel.model_validate(
+                request.args.to_dict(flat=True)
+            )
+        except ValidationError as e:
+            return make_error_response(_pydantic_validation_error(e))
+        try:
+            args = model.model_dump(exclude_none=True)
             public_key_b64 = args['public_key']
             amount = args['amount']
             dest_address = args['address']
@@ -387,7 +426,7 @@ class TransferTxnView(MethodView):
             return make_json_response(
                 lc.create_transfer(wallet, amount, dest_address).to_json()
             )
-        except (ValidationError, CCError) as err:
+        except CCError as err:
             return make_error_response(err)
         except Exception as e:
             exception_response(e)
@@ -402,16 +441,34 @@ blueprint.add_url_rule(
 )
 
 
-class SubjectTxnQuerySchema(Schema):
-    public_key = fields.String(required=True, validate=validate_public_key)
-    amount = fields.Integer(required=True, validate=validate.Range(min=1))
-    subject = fields.String(required=True, validate=validate_raw_subject)
+def _check_raw_subject(s: str) -> str:
+    if not validate_raw_subject(s):
+        msg = f'Invalid raw subject: {truncate(s)!r}'
+        raise ValueError(msg)
+    return s
+
+
+_RawSubjectField = Annotated[str, AfterValidator(_check_raw_subject)]
+
+
+class SubjectTxnQueryModel(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    public_key: PublicKeyType
+    amount: int = Field(ge=1)
+    subject: _RawSubjectField
 
 
 class SubjectTxnView(MethodView):
     def get(self, **kwargs: Any) -> Response:
         try:
-            args = SubjectTxnQuerySchema().load(request.args)
+            model = SubjectTxnQueryModel.model_validate(
+                request.args.to_dict(flat=True)
+            )
+        except ValidationError as e:
+            return make_error_response(_pydantic_validation_error(e))
+        try:
+            args = model.model_dump(exclude_none=True)
             public_key_b64 = args['public_key']
             amount = args['amount']
             subject = encode_subject(args['subject'])
@@ -422,7 +479,7 @@ class SubjectTxnView(MethodView):
             return make_json_response(
                 lc.create_subject(wallet, amount, subject).to_json()
             )
-        except (ValidationError, CCError) as err:
+        except CCError as err:
             return make_error_response(err)
         except Exception as e:
             exception_response(e)
@@ -440,7 +497,13 @@ blueprint.add_url_rule(
 class ForgiveTxnView(MethodView):
     def get(self, **kwargs: Any) -> Response:
         try:
-            args = SubjectTxnQuerySchema().load(request.args)
+            model = SubjectTxnQueryModel.model_validate(
+                request.args.to_dict(flat=True)
+            )
+        except ValidationError as e:
+            return make_error_response(_pydantic_validation_error(e))
+        try:
+            args = model.model_dump(exclude_none=True)
             public_key_b64 = args['public_key']
             amount = args['amount']
             subject = encode_subject(args['subject'])
@@ -451,7 +514,7 @@ class ForgiveTxnView(MethodView):
             return make_json_response(
                 lc.create_forgive(wallet, amount, subject).to_json()
             )
-        except (ValidationError, CCError) as err:
+        except CCError as err:
             return make_error_response(err)
         except Exception as e:
             exception_response(e)
@@ -469,7 +532,13 @@ blueprint.add_url_rule(
 class SupportTxnView(MethodView):
     def get(self, **kwargs: Any) -> Response:
         try:
-            args = SubjectTxnQuerySchema().load(request.args)
+            model = SubjectTxnQueryModel.model_validate(
+                request.args.to_dict(flat=True)
+            )
+        except ValidationError as e:
+            return make_error_response(_pydantic_validation_error(e))
+        try:
+            args = model.model_dump(exclude_none=True)
             public_key_b64 = args['public_key']
             amount = args['amount']
             subject = encode_subject(args['subject'])
@@ -480,7 +549,7 @@ class SupportTxnView(MethodView):
             return make_json_response(
                 lc.create_support(wallet, amount, subject).to_json()
             )
-        except (ValidationError, CCError) as err:
+        except CCError as err:
             return make_error_response(err)
         except Exception as e:
             exception_response(e)
@@ -495,27 +564,37 @@ blueprint.add_url_rule(
 )
 
 
-class PendingTxnQuerySchema(Schema):
-    earliest = fields.Function(
-        lambda obj: dt_2_ciso(obj.earliest),
-        deserialize=ciso_2_dt,
-        required=False,
-    )
+_CisoTimestamp = Annotated[
+    datetime,
+    BeforeValidator(lambda v: ciso_2_dt(v) if isinstance(v, str) else v),
+]
+
+
+class PendingTxnQueryModel(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    earliest: _CisoTimestamp | None = None
 
 
 class PendingTxnView(MethodView):
     def get(self, **kwargs: Any) -> Response:
         try:
+            model = PendingTxnQueryModel.model_validate(
+                request.args.to_dict(flat=True)
+            )
+        except ValidationError as e:
+            return make_error_response(_pydantic_validation_error(e))
+        try:
+            args = model.model_dump(exclude_none=True)
             node, _, _ = node_lc_dao()
             node.discard_expired_pending_txns()
-            args = PendingTxnQuerySchema().load(request.args)
             earliest = args.get('earliest')
             expired = now() - TXN_TIMEOUT
             pending_json = node.pending_txns.query_json(
                 earliest=earliest, expired=expired
             )
             return make_json_response([json.loads(j) for j in pending_json])
-        except (ValidationError, CCError) as err:
+        except CCError as err:
             return make_error_response(err)
         except Exception as e:
             exception_response(e)
