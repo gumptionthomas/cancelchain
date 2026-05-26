@@ -40,6 +40,7 @@ from cancelchain.schema import (
     AddressType,
     PublicKeyType,
     pydantic_errors_to_messages,
+    truncate,
 )
 from cancelchain.signals import http_post as http_post_signal
 from cancelchain.tasks import post_process
@@ -51,20 +52,22 @@ API_TOKEN_SECONDS = 60 * 60 * 4
 blueprint = Blueprint('api', __name__)
 
 
-def _pydantic_validation_error(e: ValidationError) -> Any:
-    """Wrap a Pydantic ValidationError so make_error_response can read
-    .messages.
+class _AdaptedValidationError(Exception):
+    """Adapter that satisfies make_error_response's ``.messages`` contract.
 
     make_error_response expects a Marshmallow-style ValidationError with
-    a .messages attribute (nested dict shape). We hand it a tiny adapter
-    object backed by pydantic_errors_to_messages(e).
+    a .messages attribute (nested dict shape). Instantiate this once per
+    Pydantic ValidationError instead of building a new Exception subclass
+    on every failure.
     """
-    messages = pydantic_errors_to_messages(e)
-    return type(
-        'AdaptedValidationError',
-        (Exception,),
-        {'messages': messages},
-    )()
+
+    def __init__(self, messages: dict[str, Any]) -> None:
+        super().__init__()
+        self.messages = messages
+
+
+def _pydantic_validation_error(e: ValidationError) -> _AdaptedValidationError:
+    return _AdaptedValidationError(pydantic_errors_to_messages(e))
 
 
 def node_lc_dao() -> tuple[Node, Chain | None, Any]:
@@ -440,7 +443,7 @@ blueprint.add_url_rule(
 
 def _check_raw_subject(s: str) -> str:
     if not validate_raw_subject(s):
-        msg = f'Invalid raw subject: {s!r}'
+        msg = f'Invalid raw subject: {truncate(s)!r}'
         raise ValueError(msg)
     return s
 
