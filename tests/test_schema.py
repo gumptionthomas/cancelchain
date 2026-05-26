@@ -247,3 +247,21 @@ def test_public_key_type_rejects_invalid():
 
     with pytest.raises(PydanticValidationError):
         M(pk='not-a-key')
+
+
+def test_base64_type_truncates_long_invalid_input_in_message():
+    """ValueError message caps long invalid input to keep responses bounded."""
+    # 501 chars: not a multiple of 4, so base64 decode will fail/not round-trip.
+    long_input = 'x' * 501  # invalid base64, definitely > 32 chars
+
+    class M(BaseModel):
+        value: Base64Type
+
+    with pytest.raises(PydanticValidationError) as exc_info:
+        M(value=long_input)
+    # The full input must NOT appear verbatim in any error message;
+    # the truncation marker should.
+    messages = pydantic_errors_to_messages(exc_info.value)
+    flat = str(messages)
+    assert long_input not in flat
+    assert '... (501 chars)' in flat

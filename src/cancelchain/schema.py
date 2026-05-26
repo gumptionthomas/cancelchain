@@ -138,37 +138,49 @@ class SansNoneSchema(Schema):
 # which Pydantic wraps into a ValidationError for the caller.
 
 
+def _truncate(s: str, max_len: int = 32) -> str:
+    """Cap a user-provided value for echo in validation messages.
+
+    Pydantic surfaces these messages in HTTP 400 responses and logs.
+    Echoing unbounded input would let clients bloat responses or leak
+    arbitrary content; cap to a short prefix plus a length indicator.
+    """
+    if len(s) <= max_len:
+        return s
+    return f'{s[:max_len]}... ({len(s)} chars)'
+
+
 def _check_address_format(s: str) -> str:
     if not validate_address_format(s):
-        msg = f'Invalid address format: {s!r}'
+        msg = f'Invalid address format: {_truncate(s)!r}'
         raise ValueError(msg)
     return s
 
 
 def _check_base64(s: str) -> str:
     if not validate_base64(s):
-        msg = f'Invalid base64 value: {s!r}'
+        msg = f'Invalid base64 value: {_truncate(s)!r}'
         raise ValueError(msg)
     return s
 
 
 def _check_mill_hash(s: str) -> str:
     if not validate_base64(s) or len(s) != 64:
-        msg = f'Invalid mill hash: {s!r}'
+        msg = f'Invalid mill hash: {_truncate(s)!r}'
         raise ValueError(msg)
     return s
 
 
 def _check_timestamp(s: str) -> str:
     if not validate_timestamp(s):
-        msg = f'Invalid timestamp: {s!r}'
+        msg = f'Invalid timestamp: {_truncate(s)!r}'
         raise ValueError(msg)
     return s
 
 
 def _check_public_key(s: str) -> str:
     if not validate_public_key(s):
-        msg = f'Invalid public key: {s!r}'
+        msg = f'Invalid public key: {_truncate(s)!r}'
         raise ValueError(msg)
     return s
 
