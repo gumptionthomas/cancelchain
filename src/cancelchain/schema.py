@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 # mypy: disable-error-code="no-untyped-call,no-any-return"
+from collections.abc import Sequence
 from dataclasses import asdict
 from typing import Annotated, Any, Protocol
 
 from marshmallow import Schema, fields, post_dump, validate
 from pydantic import AfterValidator
+from pydantic_core import ErrorDetails
 
 from cancelchain.exceptions import InvalidKeyError
 from cancelchain.util import iso_2_dt
@@ -195,11 +197,11 @@ PublicKeyType = Annotated[str, AfterValidator(_check_public_key)]
 class _ErrorsAware(Protocol):
     """Anything with an .errors() method returning Pydantic-shaped error dicts.
 
-    Pydantic's ValidationError implements this; synthetic test fakes can
-    satisfy it without subclassing.
+    Pydantic's ValidationError implements this (returns list[ErrorDetails]);
+    synthetic test fakes can satisfy it without subclassing.
     """
 
-    def errors(self) -> list[dict[str, Any]]: ...
+    def errors(self) -> Sequence[ErrorDetails]: ...
 
 
 def pydantic_errors_to_messages(e: _ErrorsAware) -> dict[str, Any]:
