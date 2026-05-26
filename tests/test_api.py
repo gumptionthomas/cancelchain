@@ -1,3 +1,4 @@
+from datetime import timedelta
 from urllib.parse import urljoin
 
 import pytest
@@ -239,3 +240,30 @@ def test_pending_transactions(
         )
         assert response.status_code == requests.codes.ok
         assert response.json() == []
+
+
+def test_pending_transactions_earliest_returns_recent_txns(
+    app, host, mill_block, requests_proxy, subject, time_stepper, wallet
+):
+    """Regression test: when earliest is in the past, pending txns received
+    after that time should be returned. Was silently broken in PR #56 when
+    the Pydantic PlainSerializer re-cast the parsed datetime back to a ciso
+    string on model.model_dump(), causing SQLAlchemy to do a string comparison
+    against the TIMESTAMP column (lexically wrong ordering).
+    """
+    with app.app_context():
+        time_step = time_stepper()
+        _ = next(time_step)
+        m, _b = mill_block(wallet)
+        _ = next(time_step)
+        past = now() - timedelta(hours=1)
+        txn = m.longest_chain.create_subject(wallet, 1, subject)
+        txn.sign()
+        ApiClient(host, wallet).post_transaction(txn)
+        response = ApiClient(host, wallet).get_pending_transactions(
+            earliest=past
+        )
+        assert response.status_code == requests.codes.ok
+        txns = [Transaction.from_dict(t) for t in response.json()]
+        assert len(txns) >= 1
+        assert txn in txns

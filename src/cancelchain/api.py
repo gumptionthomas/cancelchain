@@ -25,7 +25,6 @@ from pydantic import (
     BeforeValidator,
     ConfigDict,
     Field,
-    PlainSerializer,
     ValidationError,
 )
 
@@ -44,7 +43,7 @@ from cancelchain.schema import (
 )
 from cancelchain.signals import http_post as http_post_signal
 from cancelchain.tasks import post_process
-from cancelchain.util import ciso_2_dt, dt_2_ciso, host_address, now, now_iso
+from cancelchain.util import ciso_2_dt, host_address, now, now_iso
 from cancelchain.wallet import Wallet
 
 API_TOKEN_SECONDS = 60 * 60 * 4
@@ -565,7 +564,6 @@ blueprint.add_url_rule(
 _CisoTimestamp = Annotated[
     datetime,
     BeforeValidator(lambda v: ciso_2_dt(v) if isinstance(v, str) else v),
-    PlainSerializer(dt_2_ciso, return_type=str),
 ]
 
 
