@@ -201,9 +201,9 @@ Updates to call sites within `transaction.py`:
   try:
       CoinbaseTransactionModel.model_validate(self.to_dict())
   except ValidationError as e:
-      raise InvalidTransactionError(_pydantic_errors(e)) from e
+      raise InvalidTransactionError(pydantic_errors_to_messages(e)) from e
   ```
-  where `_pydantic_errors(e)` is a small helper that converts Pydantic's `e.errors()` list-of-dicts into the dict-shape that `InvalidTransactionError(message=...)` already expects (matching the Marshmallow behavior the downstream consumers like `api.py:make_error_response` rely on).
+  where `pydantic_errors_to_messages(e)` is the shared helper introduced in PR-1 (in `schema.py`) that converts Pydantic's `e.errors()` list-of-dicts into the nested-dict shape `InvalidTransactionError(message=...)` already expects (matching what Marshmallow's `e.messages` produces — downstream consumers like `api.py:make_error_response` don't see a change).
 
 - `TransactionSchema().dumps(self.to_dict())` → `TransactionModel(**self.to_dict()).model_dump_json(exclude_none=True)`. The `exclude_none=True` replicates `SansNoneSchema`'s old `@post_dump`.
 
@@ -400,7 +400,7 @@ The `BeforeValidator` runs `ciso_2_dt` on input strings; `PlainSerializer` runs 
 | Risk | Mitigation |
 |---|---|
 | Pydantic vs Marshmallow JSON output drift (field order, datetime format, integer-as-string). | Each PR runs the full test suite, which round-trips JSON through `from_json` / `to_json`. The `Timestamp` and `MillHash` custom types preserve string formats because they're declared as `str`-based. Any drift surfaces immediately in `test_from`, `test_db`, `test_pending_txns` etc. |
-| `e.messages` (Marshmallow) → `e.errors()` (Pydantic) shape difference cascades to `api.py:make_error_response` and `InvalidBlockError({...: e.messages})` wrappers. | Add a small `_pydantic_errors_to_messages(e)` adapter that converts Pydantic's list-of-dicts to Marshmallow's nested-dict shape. Apply at every catch site in PR-3 / PR-4 / PR-5. Existing API consumers don't see a change. |
+| `e.messages` (Marshmallow) → `e.errors()` (Pydantic) shape difference cascades to `api.py:make_error_response` and `InvalidBlockError({...: e.messages})` wrappers. | Add a small `pydantic_errors_to_messages(e)` adapter (introduced in PR-1, in `schema.py`) that converts Pydantic's list-of-dicts to Marshmallow's nested-dict shape. Apply at every catch site in PR-3 / PR-4 / PR-5. Existing API consumers don't see a change. |
 | `@post_load` removal changes the call surface from `Schema().load(d) → Transaction` to `Transaction(**Model.model_validate(d).model_dump())`. | The 3-4 call sites are all in the same PR as the schema swap (PR-3 for txn, PR-4 for block). Pre-existing tests exercise the call sites and would fail if conversion is wrong. |
 | `request.args.to_dict(flat=True)` discards repeated query parameters. | Verified by grep that no query schema currently uses list-valued fields. If a future query schema adds one, switch its specific call site to `request.args.to_dict(flat=False)` and accept the list value type. |
 | `extra='forbid'` rejects unknown fields (matching Marshmallow's default). If a peer sends an extra field, it would now fail. | This is the *current* Marshmallow behavior; PR-1's swap preserves it. If we discover peer messages sneaking in extras, switch specific Models to `extra='ignore'` with a clear comment. |
@@ -425,7 +425,7 @@ The `BeforeValidator` runs `ciso_2_dt` on input strings; `PlainSerializer` runs 
 ## Open decisions (resolve at PR time)
 
 - PR-1: where exactly to put the `Annotated` type aliases (in `schema.py`, or a new `schema_types.py`?). Default: `schema.py`.
-- PR-3 / PR-4 / PR-5: format of the Pydantic `ValidationError` → Marshmallow-shaped error adapter. Default: build a small `_pydantic_errors_to_messages(e: ValidationError) -> dict[str, Any]` helper in `schema.py` and import at catch sites.
+- PR-3 / PR-4 / PR-5: format of the Pydantic `ValidationError` → Marshmallow-shaped error adapter. Default: build a small `pydantic_errors_to_messages(e: ValidationError) -> dict[str, Any]` helper in `schema.py` (introduced in PR-1) and import at catch sites.
 - PR-4: whether `BlockModel.txns` uses `list[TransactionModel]` (base, matches current Marshmallow `fields.Nested(TransactionSchema)`) or a discriminated union of `RegularTransactionModel` + `CoinbaseTransactionModel`. Default: base model — matches existing behavior, no semantic change.
 - PR-6: whether the file-level mypy directive in `transaction.py` can be removed entirely, or must be narrowed to e.g. `"no-any-return"` only. Decided after running `uv run mypy` with the directive removed.
 

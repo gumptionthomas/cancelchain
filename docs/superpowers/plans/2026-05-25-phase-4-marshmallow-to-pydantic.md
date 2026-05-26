@@ -521,7 +521,7 @@ EOF
 - Modify: `src/cancelchain/transaction.py`
 - Modify: `src/cancelchain/payload.py` (remove Marshmallow Schemas and rename `SubjectType` → `Subject`)
 
-This PR replaces the three transaction-related Marshmallow Schemas with Pydantic BaseModels and rewrites the four call sites (`validate`, `validate_coinbase`, `to_json`, `from_dict`, `from_json`). After this PR, the Marshmallow `OutflowSchema`/`InflowSchema`/`Subject` (added by PR-2) are gone.
+This PR replaces the three transaction-related Marshmallow Schemas with Pydantic BaseModels and rewrites the four call sites that directly invoke `TransactionSchema().validate/dumps/load/loads(...)` — `validate`, `to_json`, `from_dict`, `from_json`. `validate_coinbase` is a one-line wrapper around `self.validate(coinbase=True)` and doesn't need a separate update. After this PR, the Marshmallow `OutflowSchema`/`InflowSchema`/`Subject` (added by PR-2) are gone.
 
 - [ ] **Step 1: Branch off main**
 
