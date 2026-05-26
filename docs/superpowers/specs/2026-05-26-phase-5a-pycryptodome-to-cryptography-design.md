@@ -8,7 +8,7 @@
 
 Modernize the cryptographic primitives onto pyca/`cryptography` — the Rust-backed library at the center of the Python crypto ecosystem. Drops `pycryptodome` (less actively maintained, no longer the de facto standard), and aligns the project with the broader Python ecosystem.
 
-The user has confirmed greenfield posture: no legacy wallet `.pem` files exist that need to round-trip across this swap, no existing JWT-handshake ciphertexts need to be readable, no addresses need to match what pycryptodome would have produced for the same RSA key. Same-version determinism still applies (a freshly generated wallet must round-trip in this codebase; the existing test suite must still pass).
+**Greenfield posture.** No legacy wallet `.pem` files exist that need to round-trip across this swap, no existing JWT-handshake ciphertexts need to be readable, no addresses need to match what pycryptodome would have produced for the same RSA key. Library swaps can pick the modern format/algorithm freely. Same-version determinism still applies — a freshly generated wallet must round-trip in this codebase, and the existing test suite must still pass.
 
 ## Non-goals
 
@@ -17,7 +17,7 @@ The user has confirmed greenfield posture: no legacy wallet `.pem` files exist t
 - **No changing `KEY_SIZE = 2048`.** RSA-2048 stays.
 - **No typing the `Wallet.key` / `.public_key` / `.private_key` attributes beyond `Any`.** Tightening to `rsa.RSAPrivateKey` / `rsa.RSAPublicKey` would force callers to import from `cryptography` to satisfy mypy strict at every consumer. Deferred to a separate refactor (Phase 6 or later).
 - **No `__hash__` / `__eq__` cleanup.** The current `__hash__: None = None` ergonomics and the `__eq__` that compares the underlying key object both stay as-is. pyca/cryptography's RSA key objects implement `__eq__` against other key objects, so the equality semantic is preserved.
-- **No backward compatibility shims.** Greenfield (see [[project-no-legacy-chain]]). No migration tool, no encrypted-PEM compat reader, no AES-EAX fallback for old in-flight challenges (they don't exist).
+- **No backward compatibility shims.** Greenfield project (no production deploy, no legacy chain, no shipped wallets). No migration tool, no encrypted-PEM compat reader, no AES-EAX fallback for old in-flight challenges (they don't exist).
 - **No `Wallet.to_dict` / `Wallet.from_dict` JSON-shape change.** The b58-encoded private key payload stays the same wire shape (binary key bytes → base58check), though the binary key bytes themselves shift from pycryptodome's DER serialization to cryptography's PKCS#8 DER serialization.
 
 ## Decisions taken during brainstorming
@@ -37,8 +37,8 @@ The user has confirmed greenfield posture: no legacy wallet `.pem` files exist t
 - Modify: `src/cancelchain/wallet.py`
 - Modify: `pyproject.toml` (drop `pycryptodome>=3.20`, add `cryptography>=44`)
 - Modify: `uv.lock` (regenerated)
-- Possibly modify: `tests/conftest.py` if any test wallet fixture depends on pycryptodome behavior (verify; the fixture generates keys at session start through `Wallet()` so it should be transparent)
-- Add: `tests/test_wallet.py` round-trip tests if the file doesn't exist (or append if it does)
+- Modify: `tests/conftest.py` (regenerate the hardcoded `WALLET_PRIVATE_KEY_B58` constant — see "Test fixture regeneration" below)
+- Modify: `tests/test_wallet.py` (already exists with 12 tests; append 8 new round-trip / public-key-only tests)
 
 ### New imports in `wallet.py`
 
@@ -288,15 +288,15 @@ The `[[tool.mypy.overrides]]` block for `Crypto`/`Crypto.*` becomes unused — `
 | `WALLET_SIGNATURE` | b64 of `PKCS1v1.5(SHA384(data))` signature | No (PKCS1v1.5 + SHA384 is deterministic given the same private key). |
 
 Implementer regenerates `WALLET_PRIVATE_KEY_B58` by:
-1. Loading the **old** WALLET_PRIVATE_KEY_B58 string through the new cryptography-based `Wallet(b58ks=...)` — **this will fail** because the old b58 decodes to PKCS#1 DER, which the new `Wallet` could read but would re-export as PKCS#8 with a different b58.
-2. Better: take the old b58 → b58-decode → load as PKCS#1 DER using `serialization.load_der_private_key` (this works because `cryptography` can read PKCS#1 DER on input even though it writes PKCS#8 by default) → re-export via `private_key.private_bytes(Encoding.DER, PrivateFormat.PKCS8, NoEncryption())` → base58check-encode → that's the new WALLET_PRIVATE_KEY_B58.
+1. Loading the **old** WALLET_PRIVATE_KEY_B58 string through the new cryptography-based `Wallet(b58ks=...)` actually succeeds (cryptography reads PKCS#1 DER fine — it just writes PKCS#8 by default). The failure mode is round-trip mismatch: `Wallet(b58ks=OLD).private_key_b58 != OLD` because the re-export writes PKCS#8. The fixture assertion `wallet.private_key_b58 == wallet_private_key_b58` is what fails, not the constructor.
+2. Cleanest path: take the old b58 → b58-decode → load as PKCS#1 DER using `serialization.load_der_private_key` → re-export via `private_key.private_bytes(Encoding.DER, PrivateFormat.PKCS8, NoEncryption())` → base58check-encode → that's the new WALLET_PRIVATE_KEY_B58.
 3. Verify: `Wallet(b58ks=NEW_WALLET_PRIVATE_KEY_B58).public_key_b64 == WALLET_PUBLIC_KEY_B64` and `.address == WALLET_ADDRESS` and `.sign('helloworld'.encode()) == WALLET_SIGNATURE` all hold. If any of these don't hold, the regeneration is wrong.
 
 A small inline script in the implementer's terminal does this regeneration once; the resulting string is hardcoded into `tests/conftest.py`. The other 4 WALLET_* constants stay untouched.
 
 ### Tests
 
-Add to `tests/test_wallet.py` (already exists, 11 tests):
+Add to `tests/test_wallet.py` (already exists with 12 tests):
 
 ```python
 def test_wallet_address_round_trips_through_pem(tmp_path):
@@ -387,7 +387,7 @@ Test count: 205 → ~214.
 
 - **AES-GCM-vs-EAX semantic difference.** The output ciphertext layout differs (12-byte nonce vs 16-byte nonce; integrated tag vs separate). Internal callers in `api.py` (encrypts challenge) and `api_client.py` (decrypts challenge) both call through `Wallet.encrypt` / `Wallet.decrypt`, which both move atomically in this PR. Server and client never speak across versions.
 - **`InvalidSignature` exception type.** The `validate_signature` catch needs to catch the right exception. Mirroring the old "return False on any failure" behavior with `except Exception` is broad — narrow to `except (InvalidSignature, ValueError, TypeError)` if mypy complains; the broad form is acceptable since the function's documented contract is "return True iff valid."
-- **Address mismatch from a DER format wobble.** Vanishingly unlikely — `SubjectPublicKeyInfo` DER is a deterministic ASN.1 sequence; both pycryptodome and pyca produce byte-identical output for the same RSA key. But the test suite's address-dependent assertions (e.g., wallet fixture loaded → address compared to a hardcoded value somewhere?) need to be inspected. Verify with `grep -n 'CC.*CC' tests/` and similar; if there are any hardcoded address strings, regenerate them when the test fixtures regenerate keys (which they do at every session via `tmp_path`).
+- **Address mismatch from a DER format wobble.** Vanishingly unlikely — `SubjectPublicKeyInfo` DER is a deterministic ASN.1 sequence; both pycryptodome and pyca produce byte-identical output for the same RSA key. `tests/conftest.py` hardcodes `WALLET_ADDRESS` (the b58 of `mill_hash(public_key_der)` for a specific stored RSA key); since the public-DER format is invariant across libraries, `WALLET_ADDRESS` should NOT need regeneration. Verify by running the Step 7 fixture-invariant script (see the plan) before declaring done — it asserts `Wallet(b58ks=NEW_WALLET_PRIVATE_KEY_B58).address == WALLET_ADDRESS`. If that assertion fails, the public-DER format DID drift and the address constant needs updating too; investigate before regenerating blindly.
 
 ## Open decisions
 

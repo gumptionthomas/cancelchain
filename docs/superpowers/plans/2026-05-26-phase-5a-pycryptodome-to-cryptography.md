@@ -4,7 +4,7 @@
 
 **Goal:** Replace `pycryptodome` with `cryptography` (pyca) in `src/cancelchain/wallet.py`. After this plan completes, no `Crypto.*` imports remain anywhere in the codebase and `pycryptodome` is removed from `[project.dependencies]` and `uv.lock`.
 
-**Architecture:** Single-file swap — every `pycryptodome` consumer lives in `wallet.py` (207 lines). Public `Wallet` API surface stays identical; internal RSA / AES / hash primitives swap out. Greenfield posture (per `[[project-no-legacy-chain]]`): no backward-compat shims, no migration tool, no preservation of pycryptodome's PKCS#1 DER format. The four downstream wire-shape commitments — public-key DER, address mill_hash, signature determinism, and JWT challenge in-flight only — are preserved by choosing standard cryptographic primitives (SubjectPublicKeyInfo DER, PKCS1v1.5+SHA384) that produce byte-identical output to pycryptodome for the same input.
+**Architecture:** Single-file swap — every `pycryptodome` consumer lives in `wallet.py` (207 lines). Public `Wallet` API surface stays identical; internal RSA / AES / hash primitives swap out. Greenfield posture: no backward-compat shims, no migration tool, no preservation of pycryptodome's PKCS#1 DER format. The four downstream wire-shape commitments — public-key DER, address mill_hash, signature determinism, and JWT challenge in-flight only — are preserved by choosing standard cryptographic primitives (SubjectPublicKeyInfo DER, PKCS1v1.5+SHA384) that produce byte-identical output to pycryptodome for the same input.
 
 **Tech Stack:** `cryptography>=44` (pyca, Rust-backed), `os.urandom` for nonces/session keys, `AES-GCM` for the symmetric AEAD (replaces pycryptodome's `AES-EAX`), `OAEP-SHA256` for asymmetric session-key wrapping (replaces pycryptodome's `OAEP-SHA1` default).
 
@@ -563,7 +563,7 @@ Expected: `OK — all 4 fixture invariants hold`. If any assertion fails, the re
 
 ### Step 8: Add new tests to `tests/test_wallet.py`
 
-The existing test file has 11 tests; we append 8 more.
+The existing test file has 12 tests; we append 8 more.
 
 Read the current end of `tests/test_wallet.py`:
 
@@ -878,7 +878,7 @@ Each PR (Tasks 1 and 2) ends with the controller running `wor` and `mwg`:
 1. **`wor`:** poll PR until Copilot review completes. Read inline comments. Reply one at a time with verified `in_reply_to_id` (per the user's memory).
 2. **`mwg`:** `gh pr checks <N> --watch`; once green, `gh pr merge <N> --squash --delete-branch`.
 
-If Copilot review requests substantive changes, push a new commit (do not amend) and ask the user to click "Re-request review" in the PR sidebar (per `[[feedback-copilot-rereview-trigger]]` — Copilot's auto-review doesn't fire on subsequent fix pushes consistently).
+If Copilot review requests substantive changes, push a new commit (do not amend) and ask the user to click "Re-request review" in the PR sidebar — Copilot's auto-review doesn't fire on subsequent fix pushes consistently; the UI click is the only reliable trigger.
 
 ---
 
