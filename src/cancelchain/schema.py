@@ -191,8 +191,12 @@ def pydantic_errors_to_messages(e: ValidationError) -> dict[str, Any]:
     keeps integer keys in-Python; we don't — they're indistinguishable
     on the wire).
 
-    Example output for outflows[0].amount failing Field(ge=1)::
+    When two errors share a prefix such that one path terminates at a
+    node that the other treats as internal (rare but possible with
+    discriminated unions or before-validators), the leaf messages are
+    kept under a '_self' sentinel key so neither error is lost.
 
+    Example output for outflows[0].amount failing Field(ge=1):
         {'outflows': {'0': {'amount': ['Input should be >= 1']}}}
     """
     result: dict[str, Any] = {}
@@ -206,10 +210,19 @@ def pydantic_errors_to_messages(e: ValidationError) -> dict[str, Any]:
         for part in loc[:-1]:
             key = str(part)
             existing = current.get(key)
-            if not isinstance(existing, dict):
+            if isinstance(existing, dict):
+                pass  # walk into it
+            elif isinstance(existing, list):
+                # Prior leaf at this position — preserve it under _self.
+                current[key] = {'_self': existing}
+            else:
                 current[key] = {}
             current = current[key]
         last_key = str(loc[-1])
-        bucket = current.setdefault(last_key, [])
-        bucket.append(msg)
+        existing_leaf = current.get(last_key)
+        if isinstance(existing_leaf, dict):
+            # Prior nesting under this key — append msg to _self list.
+            existing_leaf.setdefault('_self', []).append(msg)
+        else:
+            current.setdefault(last_key, []).append(msg)
     return result
