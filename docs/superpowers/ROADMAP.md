@@ -21,25 +21,6 @@ Originating specs:
 
 ---
 
-## Phase 6.6 (medium, high priority) — Smart-reorg rebuild
-
-Today any reorg triggers a full `_rebuild_longest_chain_blocks` — even a shallow 1-block tip change rewalks from tip to genesis. On a long chain that's the perf cliff: a 5-year chain at the 10-min block target is ~263 k blocks; full rebuild on a 1-block reorg takes 4 minutes (local Postgres warm cache) to ~22 minutes (cloud Postgres), exceeding the block-time budget.
-
-**Smart-reorg algorithm:** walk the new tip back via `current.prev` *only* until we hit a `block_id` already in `longest_chain_block`. That's the common ancestor; its `position` is K. Then:
-1. `DELETE FROM longest_chain_block WHERE position > K`.
-2. Insert the diverging suffix we just walked back through (collected in a list).
-3. Bump `_chain_generation`.
-
-A shallow reorg becomes O(reorg depth) instead of O(chain length). Bootstrap still needs the full walk (one-time cost), and a deep reorg (catastrophically rare) falls back to a full rebuild — keep the existing code as the fallback path.
-
-This is upstream of Phase 6.7 batched-fetch: smart-reorg removes the algorithmic issue (full rebuild on shallow reorgs), and batched-fetch is then a constant-factor optimization on whichever walks remain.
-
-Originating analysis:
-- Back-of-envelope: 5-year chain × 10 min/block = 263 k blocks; 1ms-per-lookup × 263 k = 4+ min per rebuild, exceeding the block-time budget on remote-DB / cloud configs.
-- [Phase 6.5 spec — Risks](specs/2026-05-27-phase-6_5-residual-cte-and-is-longest-cache-design.md) "Iterative walk slow on very long chains" (introduced the concern; smart-reorg is the better fix).
-
----
-
 ## Phase 6.7 (small) — Batched-fetch chain walk
 
 Replace the single-row iterative walk in `ChainDAO._rebuild_longest_chain_blocks` (currently `current = current.prev` per step) with batched fetch (`WHERE id IN (...)` over N collected prev_ids at a time) **if profiling shows the per-step lazy-load is the new bottleneck on long chains**. After Phase 6.6 (smart-reorg) lands, the only walks that benefit are bootstrap (one-time) and catastrophic deep-reorg fallback (rare) — so this drops to lower priority.
@@ -91,3 +72,4 @@ Each removed from this file when the closing PR landed. Keep here for now so fut
 - ✅ **`Wallet.key` type tightening** — closed by [PR #66](https://github.com/gumptionthomas/cancelchain/pull/66). Was originally Phase 5a deferral.
 - ✅ **Recursive CTE in `_rebuild_longest_chain_blocks`** — closed by [PR #68](https://github.com/gumptionthomas/cancelchain/pull/68) (Phase 6.5). Was originally Phase 6 deferral.
 - ✅ **`_is_longest()` per-call query cost** — closed by [PR #68](https://github.com/gumptionthomas/cancelchain/pull/68) (Phase 6.5). Was originally raised by Copilot on PR #65.
+- ✅ **Smart-reorg rebuild (Phase 6.6)** — closed by [PR #72](https://github.com/gumptionthomas/cancelchain/pull/72). Shallow reorgs are now O(reorg depth) instead of O(chain length); the full-rebuild path remains as the bootstrap + catastrophic-deep-reorg fallback. Originated as the algorithmic-cliff concern surfaced during the Phase 6.5 back-of-envelope analysis (1-block reorg on a 5-year chain previously took 4–22 min).
