@@ -557,7 +557,8 @@ class Chain:
 
     def to_db(self) -> None:
         dao = self.to_dao(create=True)
-        dao.commit()
+        db.session.add(dao)
+        db.session.flush()
         self.cid = dao.id
         dao.sync_longest_chain_blocks()
         db.session.commit()

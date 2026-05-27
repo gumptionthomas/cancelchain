@@ -70,9 +70,11 @@ def test_unspent_outflows(app, subject, time_stepper, wallet):
         assert dao_b is not None
 
         assert BlockDAO.query.count() == 3
-        # Materialization mirrors the longest chain only; chain_a (length 2)
-        # remains longest because its tip's timestamp is earlier than
-        # chain_b's, so the count is 2 not 3.
+        # Materialization mirrors the longest chain only. chain_a and
+        # chain_b both have length 2 but chain_a wins the (idx DESC,
+        # timestamp ASC) tiebreaker in ChainDAO.chains(), so the
+        # materialization holds chain_a's 2 blocks (not the 3 distinct
+        # BlockDAOs in the database).
         assert LongestChainBlockDAO.query.count() == 2
         assert dao_b.unspent_outflows(wallet.address).count() == 2
         balance = 2 * chain_b.block_reward()
@@ -133,30 +135,63 @@ def test_longest_chain_block_single_extend(app, mill_block, wallet):
         assert rows_after[-1].block_id == BlockDAO.get(b2.block_hash).id
 
 
-def test_longest_chain_block_non_longest_extend_noop(app, mill_block, wallet):
-    """When a chain that is NOT the longest gets a `Chain.to_db()`
-    call, the materialization table must stay aligned with whichever
-    chain IS longest. Simulated here by directly invoking
-    sync_longest_chain_blocks on a fork chain dao that we construct
-    to be shorter than the current longest.
+def test_longest_chain_block_non_longest_extend_noop(app, time_stepper, wallet):
+    """Calling sync on a non-longest chain leaves the materialization
+    aligned with whichever chain IS longest.
+
+    Builds a real fork (chain_a + chain_b sharing block_1) so that a
+    non-longest ChainDAO row genuinely exists, mirroring the pattern
+    in test_unspent_outflows.
     """
     with app.app_context():
-        _m, b1 = mill_block(wallet)
-        _m, _b2 = mill_block(wallet)
+        time_step = time_stepper(start=datetime.datetime.now(datetime.UTC))
+        _ = next(time_step)
+        chain_a = Chain()
+        block_1 = Block()
+        chain_a.link_block(block_1)
+        chain_a.seal_block(block_1, wallet)
+        block_1.mill()
+        chain_a.add_block(block_1)
+        chain_a.to_db()
+
+        _ = next(time_step)
+        block_2a = Block()
+        chain_a.link_block(block_2a)
+        chain_a.seal_block(block_2a, wallet)
+        block_2a.mill()
+
+        _ = next(time_step)
+        block_2b = Block()
+        chain_a.link_block(block_2b)
+        chain_a.seal_block(block_2b, wallet)
+        block_2b.mill()
+
+        _ = next(time_step)
+        chain_a.add_block(block_2a)
+        chain_a.to_db()
+
+        _ = next(time_step)
+        chain_b = Chain()
+        chain_b.add_block(block_2b)
+        chain_b.to_db()
+
+        longest = ChainDAO.longest()
+        assert longest is not None
+        non_longest = next(
+            (d for d in ChainDAO.chains() if d.id != longest.id),
+            None,
+        )
+        assert non_longest is not None, (
+            'fixture did not produce a non-longest ChainDAO row'
+        )
+        assert non_longest._is_longest() is False
+
         longest_rows_before = (
             db.session.query(LongestChainBlockDAO)
             .order_by(LongestChainBlockDAO.position)
             .all()
         )
-        # Look up the chain at the b1 tip (shorter than longest).
-        shorter_dao = ChainDAO.get(block_hash=b1.block_hash)
-        if shorter_dao is None:
-            # The b1 chain may have been replaced by b2's extension —
-            # in that case skip the assertion since a non-longest
-            # chain row doesn't exist in this fixture path.
-            return
-        assert shorter_dao._is_longest() is False
-        shorter_dao.sync_longest_chain_blocks()
+        non_longest.sync_longest_chain_blocks()
         longest_rows_after = (
             db.session.query(LongestChainBlockDAO)
             .order_by(LongestChainBlockDAO.position)
@@ -208,23 +243,58 @@ def test_longest_chain_blocks_q_fast_path_skips_cte(app, mill_block, wallet):
         assert 'longest_chain_block' in compiled_sql.lower()
 
 
-def test_non_longest_chain_blocks_uses_cte(app, mill_block, wallet):
+def test_non_longest_chain_blocks_uses_cte(app, time_stepper, wallet):
     """A non-longest ChainDAO's .blocks still emits the recursive CTE
     (we did not optimize that path). Verified by emitted SQL.
+
+    Builds a real fork (chain_a + chain_b sharing block_1) so that a
+    non-longest ChainDAO row genuinely exists.
     """
     with app.app_context():
-        _m, b1 = mill_block(wallet)
-        _m, _b2 = mill_block(wallet)
-        # Make the b1 chain ChainDAO and explicitly mark not-longest
-        # by checking via _is_longest. If b1's ChainDAO row no longer
-        # exists in this fixture path (b2 extension may have rebound
-        # the same row), skip the SQL check.
-        shorter_dao = ChainDAO.get(block_hash=b1.block_hash)
-        if shorter_dao is None:
-            return
-        assert shorter_dao._is_longest() is False
+        time_step = time_stepper(start=datetime.datetime.now(datetime.UTC))
+        _ = next(time_step)
+        chain_a = Chain()
+        block_1 = Block()
+        chain_a.link_block(block_1)
+        chain_a.seal_block(block_1, wallet)
+        block_1.mill()
+        chain_a.add_block(block_1)
+        chain_a.to_db()
+
+        _ = next(time_step)
+        block_2a = Block()
+        chain_a.link_block(block_2a)
+        chain_a.seal_block(block_2a, wallet)
+        block_2a.mill()
+
+        _ = next(time_step)
+        block_2b = Block()
+        chain_a.link_block(block_2b)
+        chain_a.seal_block(block_2b, wallet)
+        block_2b.mill()
+
+        _ = next(time_step)
+        chain_a.add_block(block_2a)
+        chain_a.to_db()
+
+        _ = next(time_step)
+        chain_b = Chain()
+        chain_b.add_block(block_2b)
+        chain_b.to_db()
+
+        longest = ChainDAO.longest()
+        assert longest is not None
+        non_longest = next(
+            (d for d in ChainDAO.chains() if d.id != longest.id),
+            None,
+        )
+        assert non_longest is not None, (
+            'fixture did not produce a non-longest ChainDAO row'
+        )
+        assert non_longest._is_longest() is False
+
         compiled_sql = str(
-            shorter_dao.blocks.statement.compile(
+            non_longest.blocks.statement.compile(
                 compile_kwargs={'literal_binds': True}
             )
         )
