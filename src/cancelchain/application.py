@@ -33,11 +33,12 @@ def init_app(
 ) -> None:
     app.wallets = read_wallets(app)  # type: ignore[attr-defined]
     app.clients = create_clients(app)  # type: ignore[attr-defined]
-    # Close pooled httpx.Clients when the app is garbage-collected
-    # (deterministic in CPython) or at process exit. weakref.finalize
-    # avoids the test-memory-leak that plain atexit.register would cause
-    # — each app instance gets its own finalizer tied to the app's
-    # lifetime, not the process's.
+    # Close pooled httpx.Clients when the app is garbage-collected or
+    # at process exit. Refcount-based collection fires promptly on the
+    # last reference drop for acyclic objects; cycles defer to the gc
+    # cycle collector, which runs eventually. weakref.finalize is
+    # preferred over plain atexit.register so tests don't accumulate
+    # one handler per app fixture for the life of the pytest process.
     weakref.finalize(app, close_clients, app.clients)  # type: ignore[attr-defined]
 
     app.url_map.converters['address'] = AddressConverter

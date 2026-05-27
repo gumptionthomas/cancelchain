@@ -1,3 +1,5 @@
+import gc
+import weakref
 from typing import Any
 
 import pytest
@@ -48,15 +50,12 @@ def test_close_clients_on_empty_dict() -> None:
     close_clients({})  # no-op, must not raise
 
 
-def test_init_app_registers_finalizer(app: Any) -> None:
-    """The init_app path registers a weakref.finalize for app.clients.
+def test_close_clients_smoke_on_real_app(app: Any) -> None:
+    """Smoke: pooled ApiClients in a real app's app.clients all close
+    when close_clients is called explicitly.
 
-    Smoke test: the app fixture builds an app via create_app, which
-    calls init_app, which schedules a finalizer. Calling
-    close_clients(app.clients) directly closes the pooled clients;
-    subsequent calls are no-ops thanks to httpx.Client.close()'s
-    idempotency. We assert that pooled clients exist and that closing
-    them sets is_closed.
+    Doesn't exercise the finalizer path — see
+    test_weakref_finalize_fires_on_gc for that.
     """
     if not app.clients:
         pytest.skip('app fixture has no peer clients configured')
@@ -64,3 +63,32 @@ def test_init_app_registers_finalizer(app: Any) -> None:
     assert sample._client.is_closed is False
     close_clients(app.clients)
     assert sample._client.is_closed is True
+
+
+def test_weakref_finalize_fires_on_gc() -> None:
+    """The pattern init_app uses — weakref.finalize(app, close_clients,
+    app.clients) — runs the cleanup when the last reference to the app
+    object drops and the GC reclaims it.
+
+    Uses a minimal stand-in app object (no Flask needed) to keep the
+    test independent of create_app's heavier setup. The real init_app
+    path is exercised indirectly via the app fixture in
+    test_close_clients_smoke_on_real_app.
+    """
+
+    class _StandinApp:
+        pass
+
+    a, b = _RecordingClient(), _RecordingClient()
+    clients: dict[str, Any] = {'peer-a': a, 'peer-b': b}
+    app = _StandinApp()
+    app.clients = clients  # type: ignore[attr-defined]
+    weakref.finalize(app, close_clients, clients)
+
+    app_ref = weakref.ref(app)
+    del app
+    gc.collect()
+
+    assert app_ref() is None, 'standin app was not garbage-collected'
+    assert a.closed is True
+    assert b.closed is True
