@@ -68,7 +68,7 @@ class Node:
                 continue
             try:
                 client.post_transaction(txn, visited_hosts=visited_hosts)
-            except httpx.RequestError as re:
+            except httpx.HTTPError as re:
                 self.logger.warning(re)
             except Exception as e:
                 self.logger.exception(e)
@@ -132,7 +132,7 @@ class Node:
                 )
                 if r.status_code == 404:
                     self.fill_peer(peer, block)
-            except httpx.RequestError as re:
+            except httpx.HTTPError as re:
                 self.logger.warning(re)
             except Exception as e:
                 self.logger.exception(e)
@@ -211,7 +211,7 @@ class Node:
                 )
                 if r.status_code == 200:
                     return Block.from_json(r.text)
-            except httpx.RequestError as re:
+            except httpx.HTTPError as re:
                 self.logger.error(re)
             except Exception as e:
                 self.logger.exception(e)
@@ -228,7 +228,7 @@ class Node:
             try:
                 r = client.get_block()
                 yield Block.from_json(r.text), p
-            except httpx.RequestError as re:
+            except httpx.HTTPError as re:
                 self.logger.error(re)
             except Exception as e:
                 self.logger.exception(e)

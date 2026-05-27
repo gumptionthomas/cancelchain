@@ -52,7 +52,7 @@ class Miller(Node):
                                 json.dumps(txn_json),
                                 visited_hosts=visited_hosts,
                             )
-                except httpx.RequestError as re:
+                except httpx.HTTPError as re:
                     self.logger.error(re)
                 except Exception as e:
                     self.logger.exception(e)

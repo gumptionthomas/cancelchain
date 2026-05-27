@@ -107,7 +107,8 @@ def queue_post_process(
     headers: dict[str, str] | None = None
     if vhosts:
         headers = {PEER_HOST_HEADER: ','.join(vhosts)}
-    headers = ApiClient(host, wallet).auth_header(headers=headers)
+    with ApiClient(host, wallet) as c:
+        headers = c.auth_header(headers=headers)
     url = urljoin(host, path)
     http_post_signal.send(
         current_app._get_current_object(),  # type: ignore[attr-defined]
