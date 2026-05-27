@@ -500,8 +500,7 @@ def test_smart_reorg_walks_only_to_common_ancestor(app, mill_block, wallet):
             .order_by(LongestChainBlockDAO.position)
             .all()
         )
-        ids_before = {r.block_id for r in rows_before}
-        positions_before = [r.position for r in rows_before]
+        snapshot_before = [(r.block_id, r.position) for r in rows_before]
 
         _m, _new_tip = mill_block(wallet)
 
@@ -510,12 +509,11 @@ def test_smart_reorg_walks_only_to_common_ancestor(app, mill_block, wallet):
             .order_by(LongestChainBlockDAO.position)
             .all()
         )
-        # First 5 rows' block_ids are unchanged: smart-reorg did NOT
-        # delete-and-rebuild from scratch (which would have made new
-        # row instances with new identities or different orderings).
-        # The same block_id set is present in the same positions.
-        assert {r.block_id for r in rows_after[:5]} == ids_before
-        assert [r.position for r in rows_after[:5]] == positions_before
+        # First 5 rows' (block_id, position) pairs unchanged: smart-
+        # reorg did NOT delete-and-rebuild. Using ordered pairs (not a
+        # set) catches bugs that would shift block_ids between positions.
+        snapshot_after = [(r.block_id, r.position) for r in rows_after[:5]]
+        assert snapshot_after == snapshot_before
         # And exactly one new row at the tail.
         assert len(rows_after) == len(rows_before) + 1
         assert rows_after[-1].position == 5
