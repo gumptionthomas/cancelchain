@@ -129,7 +129,7 @@ Similar factories for outflows and inflows. Each is a one-liner-equivalent: JOIN
 
 ### Routing: `ChainDAO` method branching
 
-Each of the 8 affected methods gets a top-of-function branch:
+Branching happens in **only the 4 property accessors** (`blocks`, `transactions`, `outflows`, `inflows`). The 6 downstream methods (`unspent_outflows`, `wallet_balance`, `unforgiven_outflows`, `subject_balance`, `subject_support`, `wallet_leaderboard`) all compose on top of those properties — they read `self.outflows`, `self.inflows`, `self.transactions` — so they inherit the fast path automatically with no direct edits.
 
 ```python
 @property
@@ -138,14 +138,20 @@ def blocks(self) -> Query[BlockDAO]:
         return BlockDAO.longest_chain_blocks_q()
     return self.block.block_chain  # CTE fallback
 
+@property
+def transactions(self) -> Query[TransactionDAO]:
+    if self._is_longest():
+        return BlockDAO.longest_chain_transactions_q()
+    return self.block.transactions_chain  # CTE fallback
+
+# outflows / inflows: analogous
+
 def _is_longest(self) -> bool:
     longest = ChainDAO.longest()
     return longest is not None and longest.id == self.id
 ```
 
-Methods affected: `blocks` / `transactions` / `outflows` / `inflows` properties; plus `unspent_outflows`, `wallet_balance`, `unforgiven_outflows`, `subject_balance`, `subject_support`, `wallet_leaderboard`. For the four `Query`-returning methods (`unspent_outflows`, `unforgiven_outflows`, `wallet_leaderboard` + `blocks`/`transactions`/`outflows`/`inflows` properties), callers can keep composing `.filter(...)`, `.subquery()`, etc. — the fast-path return type is the same `Query[X]` shape.
-
-For the scalar-returning methods (`wallet_balance`, `subject_balance`, `subject_support`), the branching happens internally and the return type stays `int`.
+The fast-path `Query[X]` return shape matches the CTE-path `Query[X]` shape, so callers that further compose `.filter(...)`, `.subquery()`, etc. (the 6 downstream methods, plus any future consumers) work unchanged.
 
 ## Changes
 
@@ -155,7 +161,7 @@ For the scalar-returning methods (`wallet_balance`, `subject_balance`, `subject_
   - Add `LongestChainBlockDAO` class.
   - Add `ChainDAO.sync_longest_chain_blocks()` + `ChainDAO._rebuild_longest_chain_blocks()` + `ChainDAO._is_longest()`.
   - Add `BlockDAO.longest_chain_blocks_q()` + `.longest_chain_transactions_q()` + `.longest_chain_outflows_q()` + `.longest_chain_inflows_q()`.
-  - Add branching in 8 `ChainDAO` query methods.
+  - Add branching in 4 `ChainDAO` property accessors (`blocks`, `transactions`, `outflows`, `inflows`); the 6 downstream methods get the fast path automatically through composition.
 - Modify: `src/cancelchain/chain.py`
   - `Chain.to_db()`: call `dao.sync_longest_chain_blocks()` after `dao.commit()`.
 - Modify: `tests/test_models.py`
