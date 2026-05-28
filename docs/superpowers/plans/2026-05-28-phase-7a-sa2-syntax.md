@@ -988,7 +988,7 @@ After:
         return stmt
 ```
 
-`Any` may need to be imported at the top of `models.py` if not already (`from typing import TYPE_CHECKING, Any` — check first with grep). Wallet_leaderboard returns a tuple-style row (address, sum), so `Select[Any]` is the most permissive accurate type without inventing a NamedTuple wrapper.
+`Any` is already added to the `typing` import in Step 1 (as part of the same edit that drops `TYPE_CHECKING` and removes the `if TYPE_CHECKING:` block), so no additional import work is needed here. Wallet_leaderboard returns a tuple-style row (address, sum), so `Select[Any]` is the most permissive accurate type without inventing a NamedTuple wrapper.
 
 ### Step 7: Migrate `ChainDAO.sync_longest_chain_blocks` + `_rebuild_longest_chain_blocks` (lines ~636–740)
 
@@ -1182,7 +1182,9 @@ After:
         return (
             db.select(cls)
             .join(cls.block)
-            .order_by(BlockDAO.idx.desc(), BlockDAO.timestamp)
+            .order_by(
+                BlockDAO.idx.desc(), BlockDAO.timestamp, BlockDAO.block_hash
+            )
         )
 ```
 
