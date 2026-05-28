@@ -139,6 +139,8 @@ def main() -> None:
         help='Chain lengths to benchmark (default: 1k, 10k, 100k)',
     )
     args = parser.parse_args()
+    if any(n <= 0 for n in args.sizes):
+        parser.error('--sizes values must be positive integers')
 
     app = create_app()
     with app.app_context():
@@ -168,6 +170,12 @@ def main() -> None:
                 )
                 assert rows == n, f'expected {n} materialized rows, got {rows}'
         finally:
+            # Close session + dispose engine BEFORE unlinking the
+            # SQLite file. On platforms with stricter file locking
+            # (notably Windows), unlinking an in-use SQLite file
+            # raises PermissionError.
+            db.session.remove()
+            db.engine.dispose()
             Path(_TMPDB_PATH).unlink(missing_ok=True)
 
 
