@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Translate all 85 legacy `Model.query` / `db.session.query(...)` call sites (36 in `src/cancelchain/models.py`, 1 in `src/cancelchain/api.py`, 1 in `src/cancelchain/browser.py`, 35 in `tests/test_models.py`, 12 in `tests/test_chain.py`) to the SQLAlchemy 2.0 idiom (`db.session.execute(db.select(...))` + `.scalar()` / `.scalars()` / `.scalar_one_or_none()` extractors). Migrate the 21 `Query[X]` chain-factory return-type annotations (and 3 parameter annotations on the same methods) to `Select[tuple[X]]` (SA 2.x's `Select` is parameterized by row shape, not by the scalar entity — see the spec's translation table). Update three `chain.py` caller sites, one `browser.py` `paginate()` site, and assorted test-suite consumer sites that previously iterated / `.count()`-ed / `.paginate()`-d a `Query` and now need explicit execution wrappers (`db.session.execute(...).scalars()` for iteration, `db.session.scalar(db.select(db.func.count()).select_from(stmt.subquery()))` for count — wrapped in a `_count_select(stmt)` helper for test readability, `db.paginate(stmt)` for pagination). Keep `db.Model` and the `mypy: disable-error-code` block at the top of `models.py` — both leave with Phase 7b.
+**Goal:** Translate all 94 legacy `Model.query` / `db.session.query(...)` call sites (36 in `src/cancelchain/models.py`, 1 in `src/cancelchain/api.py`, 1 in `src/cancelchain/browser.py`, 38 in `tests/test_models.py`, 18 in `tests/test_chain.py`) to the SQLAlchemy 2.0 idiom (`db.session.execute(db.select(...))` + `.scalar()` / `.scalars()` / `.scalar_one_or_none()` extractors). Migrate the 21 `Query[X]` chain-factory return-type annotations (and 3 parameter annotations on the same methods) to `Select[tuple[X]]` (SA 2.x's `Select` is parameterized by row shape, not by the scalar entity — see the spec's translation table). Update three `chain.py` caller sites, one `browser.py` `paginate()` site, and assorted test-suite consumer sites that previously iterated / `.count()`-ed / `.paginate()`-d a `Query` and now need explicit execution wrappers (`db.session.execute(...).scalars()` for iteration, `db.session.scalar(db.select(db.func.count()).select_from(stmt.subquery()))` for count — wrapped in a `_count_select(stmt)` helper for test readability, `db.paginate(stmt)` for pagination). Keep `db.Model` and the `mypy: disable-error-code` block at the top of `models.py` — both leave with Phase 7b.
 
-**Architecture:** Pure syntax pass; no schema, no behavior, no test count changes. Replace `Query` import with `Select`; rewrite every legacy query site per the spec's translation table; rewrite the recursive CTE in `BlockDAO._block_chain` to build the base via `db.select(...).cte(recursive=True)`; chain factories on `TransactionDAO` / `OutflowDAO` / `InflowDAO` / `BlockDAO` / `ChainDAO` return `Select[tuple[X]]`; the 6 downstream `ChainDAO` methods (`unspent_outflows`, `wallet_balance`, `unforgiven_outflows`, `subject_balance`, `subject_support`, `wallet_leaderboard`) compose on the new Select factories. Three iteration sites in `chain.py` (`Chain.unspent_outflows`, `Chain.unforgiven_outflows`, `Chain.unforgiven_address_outflows`) wrap the DAO call with `db.session.execute(...).scalars()` to recover the row iterator. The one `browser.py` `ChainDAO.chains().paginate()` site moves to `db.paginate(ChainDAO.chains())` (Flask-SQLAlchemy 3.x's SA-2.0-compatible top-level helper) and loses its `# type: ignore[attr-defined]` comment. Tests migrate the same way; three `block_chain` list comprehensions and four `unspent_outflows.count()` assertions in `tests/test_models.py`, plus the 12 ChainDAO-property consumer sites in `tests/test_chain.py::test_dao`, also get the appropriate execute/count/list wrappers. Two new test helpers (`_count(model)` and `_count_select(stmt)`) live in `tests/_sa_helpers.py` (or atop `tests/conftest.py`) to keep both test files DRY.
+**Architecture:** Pure syntax pass; no schema, no behavior, no test count changes. Replace `Query` import with `Select`; rewrite every legacy query site per the spec's translation table; rewrite the recursive CTE in `BlockDAO._block_chain` to build the base via `db.select(...).cte(recursive=True)`; chain factories on `TransactionDAO` / `OutflowDAO` / `InflowDAO` / `BlockDAO` / `ChainDAO` return `Select[tuple[X]]`; the 6 downstream `ChainDAO` methods (`unspent_outflows`, `wallet_balance`, `unforgiven_outflows`, `subject_balance`, `subject_support`, `wallet_leaderboard`) compose on the new Select factories. Three iteration sites in `chain.py` (`Chain.unspent_outflows`, `Chain.unforgiven_outflows`, `Chain.unforgiven_address_outflows`) wrap the DAO call with `db.session.execute(...).scalars()` to recover the row iterator. The one `browser.py` `ChainDAO.chains().paginate()` site moves to `db.paginate(ChainDAO.chains())` (Flask-SQLAlchemy 3.x's SA-2.0-compatible top-level helper) and loses its `# type: ignore[attr-defined]` comment. Tests migrate the same way; three `block_chain` list comprehensions and four `unspent_outflows.count()` assertions in `tests/test_models.py`, plus the 18 `ChainDAO`-property consumer operations in `tests/test_chain.py::test_dao` (8 `.count()` + 8 `.all()` + 2 `list(wallet_leaderboard(...))`), also get the appropriate execute/count/list wrappers. Two new test helpers (`_count(model)` and `_count_select(stmt)`) live in `tests/_sa_helpers.py` (or atop `tests/conftest.py`) to keep both test files DRY.
 
 **Tech Stack:** SQLAlchemy 2.0.50 + Flask-SQLAlchemy 3.1.1 (existing). `from sqlalchemy import Select` replaces `from sqlalchemy.orm import Query`. `db.select` / `db.session.execute` / `db.session.scalar` / `db.func` / `db.aliased` all resolve via Flask-SQLAlchemy's existing facade. No dependency changes; no `database.py` changes.
 
@@ -81,8 +81,9 @@ unforgiven_address_outflows) that previously iterated a Query and
 now need db.session.execute(...).scalars() wrappers, migrate
 tests/test_models.py (27 query sites + 3 block_chain iterations +
 4 unspent_outflows.count + 2 statement.compile + 2 ChainDAO.chains
-iterations) and tests/test_chain.py (12 ChainDAO-property
-consumer sites in test_dao), add a small tests/_sa_helpers.py
+iterations) and tests/test_chain.py (18 ChainDAO-property
+consumer operations in test_dao: 8 .count + 8 .all + 2
+list(wallet_leaderboard)), add a small tests/_sa_helpers.py
 module with _count(model) and _count_select(stmt) helpers to keep
 assert lines readable, verify all 236 existing tests stay green,
 run the benchmark harness (PR #74) to confirm perf is unchanged.
@@ -107,7 +108,7 @@ gh pr create --base main --head docs/phase-7a-design --title "docs(phase-7a): Ph
 - Adds the Phase 7a implementation plan (\`docs/superpowers/plans/2026-05-28-phase-7a-sa2-syntax.md\`).
 - No code changes.
 
-Phase 7 splits per ROADMAP guidance: **7a translates the 85 legacy query call sites** to the SA 2.0 idiom and migrates the 21 \`Query[X]\` chain-factory return types (and 3 param annotations) to \`Select[tuple[X]]\` (SA 2.x's \`Select\` is parameterized by row shape, not the scalar entity); 7b (separate spec) switches to typed \`DeclarativeBase\` and removes the \`mypy: disable-error-code\` block from \`models.py\`. Also updates three caller sites in \`chain.py\`, one \`paginate()\` call in \`browser.py\`, and assorted test-suite consumer sites in \`tests/test_models.py\` and \`tests/test_chain.py\` that previously consumed iterable / \`.count()\` / \`.paginate()\` \`Query\` results and now need explicit execution wrappers. Pure syntax pass — no schema, no behavior, no test-count change.
+Phase 7 splits per ROADMAP guidance: **7a translates the 94 legacy query call sites** to the SA 2.0 idiom and migrates the 21 \`Query[X]\` chain-factory return types (and 3 param annotations) to \`Select[tuple[X]]\` (SA 2.x's \`Select\` is parameterized by row shape, not the scalar entity); 7b (separate spec) switches to typed \`DeclarativeBase\` and removes the \`mypy: disable-error-code\` block from \`models.py\`. Also updates three caller sites in \`chain.py\`, one \`paginate()\` call in \`browser.py\`, and assorted test-suite consumer sites in \`tests/test_models.py\` and \`tests/test_chain.py\` that previously consumed iterable / \`.count()\` / \`.paginate()\` \`Query\` results and now need explicit execution wrappers. Pure syntax pass — no schema, no behavior, no test-count change.
 
 ## Test plan
 - [x] Spec self-review passed.
@@ -131,7 +132,7 @@ EOF
 - Modify: `src/cancelchain/chain.py` (3 caller-side wrappers around migrated DAO methods + 1 new import)
 - Create: `tests/_sa_helpers.py` with `_count(model)` and `_count_select(stmt)` helpers — or alternatively, add them to the top of `tests/conftest.py` (decide during impl based on what feels least intrusive)
 - Modify: `tests/test_models.py` (27 original query sites + 3 `block_chain` iteration sites + 4 `unspent_outflows.count()` assertions + 2 `statement.compile()` sites + 2 `ChainDAO.chains()` iteration sites = 38 total — but several of the originals collapse onto the new `_count` helper so the diff is smaller than the count implies; also imports the new helpers)
-- Modify: `tests/test_chain.py` (12 site translations in `test_dao`: 8 `.count()` calls on `ChainDAO` properties via `_count_select`, 8 `.all()` calls wrapped with `db.session.execute(...).scalars().all()`, 2 `list(wallet_leaderboard(...))` calls wrapped with `list(db.session.execute(...))` to preserve Row-tuple semantics; imports the new helpers and `db`)
+- Modify: `tests/test_chain.py` (18 site translations in `test_dao` — 8 `.count()` calls on `ChainDAO` properties via `_count_select` + 8 `.all()` calls wrapped with `db.session.execute(...).scalars().all()` + 2 `list(wallet_leaderboard(...))` calls wrapped with `list(db.session.execute(...))` to preserve Row-tuple semantics; imports the new helpers and `db`)
 
 The migration is long but mechanical. Steps 2–7 walk through each affected class / file. After each section, optionally run `uv run pytest -x` to catch errors early (the test suite is a forcing function for correctness).
 
@@ -142,10 +143,15 @@ git checkout main && git pull --ff-only
 git checkout -b feat/phase-7a-sa2-syntax
 ```
 
-Open `src/cancelchain/models.py`. Locate the SQLAlchemy import block (around lines 19–29). The current state imports `Query` somewhere — find and replace.
+Open `src/cancelchain/models.py`. The current state imports `Query` only inside an `if TYPE_CHECKING:` block at lines 33-34 (the runtime imports do NOT include `Query`). After 7a the `Query` import is gone entirely, which leaves the `if TYPE_CHECKING:` block empty and `TYPE_CHECKING` itself unused in `typing` imports — both must be removed in this step too.
 
-Before (near the top of `models.py`):
+Before (lines 15-34 of `models.py`):
 ```python
+from collections.abc import Generator
+from typing import TYPE_CHECKING, ClassVar
+
+from argon2 import PasswordHasher
+from argon2.exceptions import InvalidHashError, VerifyMismatchError
 from sqlalchemy import (
     CTE,
     BigInteger,
@@ -156,12 +162,21 @@ from sqlalchemy import (
     Text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-```
 
-If `Query` is imported (check with `grep -n 'Query' src/cancelchain/models.py | head -5`), remove it. Add `Select` to the `from sqlalchemy import (...)` block, alphabetically:
+from cancelchain.database import db
+from cancelchain.wallet import Wallet
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Query
+```
 
 After:
 ```python
+from collections.abc import Generator
+from typing import Any, ClassVar
+
+from argon2 import PasswordHasher
+from argon2.exceptions import InvalidHashError, VerifyMismatchError
 from sqlalchemy import (
     CTE,
     BigInteger,
@@ -173,9 +188,22 @@ from sqlalchemy import (
     Text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from cancelchain.database import db
+from cancelchain.wallet import Wallet
 ```
 
-(If `Query` was imported from `sqlalchemy.orm`, drop it; `Select` lives in `sqlalchemy`.)
+Three changes:
+1. `TYPE_CHECKING` is dropped from `typing` since the `if TYPE_CHECKING:` block goes away. `Any` is added because `wallet_leaderboard` returns `Select[Any]` (see Step 6).
+2. `Select` is added to the `sqlalchemy` import alphabetically.
+3. The entire `if TYPE_CHECKING:` block (lines 33-34) is removed — without this, ruff (`F401`) flags `TYPE_CHECKING` as unused after `Query` is gone.
+
+Verify:
+```bash
+grep -n 'TYPE_CHECKING\|^from sqlalchemy.orm import Query\| Query ' src/cancelchain/models.py
+```
+
+Expected: returns nothing.
 
 ### Step 2: Migrate `TransactionDAO` (lines ~107–116)
 
@@ -366,8 +394,13 @@ After:
 ```python
     @property
     def block_chain(self) -> Select[tuple[BlockDAO]]:
-        return db.select(self._block_chain)
+        block_alias = db.aliased(BlockDAO, self._block_chain)
+        return db.select(block_alias)
 ```
+
+**Why `db.aliased`, not bare `db.select(self._block_chain)`:** `self._block_chain` is a `CTE` (a SQL Selectable). Both `db.session.query(cte)` (legacy) and `db.select(cte)` (2.0) treat the CTE as an unmapped Selectable and yield `Row` tuples with the CTE's column shape — NOT `BlockDAO` ORM instances. The existing `Query[BlockDAO]` annotation is technically wrong (the mypy override hides it), and bare `db.select(self._block_chain)` would carry that bug forward: `db.session.execute(stmt).scalars()` would extract the first column (the integer `id`), not `BlockDAO` objects, so tests like `[b.id for b in ...]` would break (`b` would already be an int).
+
+`db.aliased(BlockDAO, self._block_chain)` maps the CTE's columns onto the `BlockDAO` ORM class, so `db.select(block_alias)` returns a `Select` whose `.scalars()` yields real `BlockDAO` instances. The `Select[tuple[BlockDAO]]` annotation is then accurate, and the existing test iteration patterns (`[b.id for b in db.session.execute(...).scalars()]`) work as written. Downstream callers (`TransactionDAO.transactions_chain(self.block_chain)` etc.) still work: they call `block_chain.subquery()`, which produces a subquery with the same column shape, and the existing `db.aliased(BlockDAO, block_chain.subquery())` pattern in those callers is harmlessly nested over our aliased select.
 
 The `transactions_chain` / `outflows_chain` / `inflows_chain` properties on `BlockDAO` (lines ~309–319) — only the return-type annotation changes:
 
@@ -1563,7 +1596,7 @@ grep -n '\.unspent_outflows([^)]*)\.count\|\.statement\.compile\|for d in ChainD
 
 Expected: all three return nothing. The second grep catches un-wrapped `block_chain` iteration (regex `[^.]` avoids flagging `.block_chain.subquery()`). The third catches the round-2-discovered patterns: `.unspent_outflows(...).count()`, `.statement.compile(...)`, and bare `ChainDAO.chains()` iteration.
 
-### Step 10b: Migrate `tests/test_chain.py` (12 sites in `test_dao`)
+### Step 10b: Migrate `tests/test_chain.py` (18 sites in `test_dao` — 8 `.count()` + 8 `.all()` + 2 `list(wallet_leaderboard(...))`)
 
 `tests/test_chain.py::test_dao` (lines ~299-346) exercises the `ChainDAO` properties extensively. After Step 6, `.blocks` / `.transactions` / `.outflows` / `.inflows` all return `Select`, so `.count()` and `.all()` calls on them no longer work. Also, the two `list(chain.to_dao(create=True).wallet_leaderboard(...))` calls (lines ~327, ~335) iterate the migrated `Select[Any]` directly.
 
@@ -1685,7 +1718,7 @@ git add \
 git commit -m "$(cat <<'EOF'
 feat(models): SA 2.0 query syntax migration
 
-Phase 7a. Translates all 85 legacy Model.query / db.session.query
+Phase 7a. Translates all 94 legacy Model.query / db.session.query
 call sites to the SQLAlchemy 2.0 idiom (db.session.execute(
 db.select(...)) + .scalar() / .scalars() / .scalar_one_or_none()
 extractors). Migrates the 21 Query[X] chain-factory return-type
@@ -1808,7 +1841,7 @@ EOF
 git push -u origin feat/phase-7a-sa2-syntax
 gh pr create --base main --title "feat(models): SA 2.0 query syntax migration" --body "$(cat <<'EOF'
 ## Summary
-- Translates all 85 legacy \`Model.query\` / \`db.session.query(...)\` call sites across \`models.py\`, \`api.py\`, \`browser.py\`, \`tests/test_models.py\`, and \`tests/test_chain.py\` to the SQLAlchemy 2.0 idiom (\`db.session.execute(db.select(...))\` + \`.scalar()\` / \`.scalars()\` / \`.scalar_one_or_none()\` extractors).
+- Translates all 94 legacy \`Model.query\` / \`db.session.query(...)\` call sites across \`models.py\`, \`api.py\`, \`browser.py\`, \`tests/test_models.py\`, and \`tests/test_chain.py\` to the SQLAlchemy 2.0 idiom (\`db.session.execute(db.select(...))\` + \`.scalar()\` / \`.scalars()\` / \`.scalar_one_or_none()\` extractors).
 - Migrates the 21 \`Query[X]\` chain-factory return-type annotations (and 3 parameter annotations on the same methods) to \`Select[tuple[X]]\` (SA 2.x's \`Select\` is parameterized by row shape, not the scalar entity).
 - Updates three caller sites in \`chain.py\`, one \`paginate()\` call in \`browser.py\` (to \`db.paginate(stmt)\` — drops a \`# type: ignore\` comment as a bonus), and assorted test-suite consumer sites (\`block_chain\` iterations, \`unspent_outflows.count()\`, \`statement.compile()\`, \`ChainDAO.chains()\` iterations, \`ChainDAO.blocks/.transactions/.outflows/.inflows\` \`.count()\`/\`.all()\` calls, and \`list(wallet_leaderboard(...))\` calls).
 - Adds a small \`tests/_sa_helpers.py\` (or top-of-\`conftest.py\`) module with \`_count(model)\` and \`_count_select(stmt)\` helpers to keep assert lines readable.
