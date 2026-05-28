@@ -1,23 +1,8 @@
-# Roadmap — Phase 7 and beyond
+# Roadmap — post-Phase-7
 
 Consolidated list of forward-looking items deferred from prior phase specs. Each entry links to the originating spec for the full rationale. Items are not strictly ordered — pick by current priority.
 
 When closing an item: remove it from this file (or mark it ✅ with the closing PR/commit) and move on. When discovering a new item during a phase: add a one-line entry here pointing at the spec section that introduced it.
-
----
-
-## Phase 7 (next big phase) — SQLAlchemy 2.0 modernization
-
-A bundled phase covering the three tightly-coupled items in `src/cancelchain/models.py`. Originally planned as Phase 6 before that slot was repurposed for the recursive-CTE bottleneck fix.
-
-- **SA 2.0 query syntax.** Translate `Model.query` / `db.session.query(...)` to `db.session.execute(db.select(...)).scalar() / .scalars().all()`. ~30 call sites in `models.py`, ~3 in `tests/test_models.py`, 1 in `api.py`.
-- **Typed `DeclarativeBase`.** Switch from Flask-SQLAlchemy's dynamic `db.Model` to a typed base — required to remove the mypy override below.
-- **Remove `# mypy: disable-error-code="no-untyped-call,no-any-return,name-defined,misc"`** block at the top of `models.py`. Originally added in Phase 3 with an explicit Phase 7 sunset note.
-
-Originating specs:
-- [Phase 6 spec — What comes next](specs/2026-05-27-phase-6-longest-chain-materialization-design.md)
-- [Phase 3 spec](specs/2026-05-24-phase-3-lint-typing-ci-gating-design.md) — initial Phase 7 sunset commitment
-- `src/cancelchain/models.py:7-11` — header comment promising the cleanup
 
 ---
 
@@ -73,3 +58,4 @@ Each removed from this file when the closing PR landed. Keep here for now so fut
 - ✅ **Recursive CTE in `_rebuild_longest_chain_blocks`** — closed by [PR #68](https://github.com/gumptionthomas/cancelchain/pull/68) (Phase 6.5). Was originally Phase 6 deferral.
 - ✅ **`_is_longest()` per-call query cost** — closed by [PR #68](https://github.com/gumptionthomas/cancelchain/pull/68) (Phase 6.5). Was originally raised by Copilot on PR #65.
 - ✅ **Smart-reorg rebuild (Phase 6.6)** — closed by [PR #72](https://github.com/gumptionthomas/cancelchain/pull/72). Shallow reorgs are now O(reorg depth) instead of O(chain length); the full-rebuild path remains as the bootstrap + catastrophic-deep-reorg fallback. Originated as the algorithmic-cliff concern surfaced during the Phase 6.5 back-of-envelope analysis (1-block reorg on a 5-year chain previously took 4–22 min).
+- ✅ **Phase 7 — SQLAlchemy 2.0 modernization** — closed by docs PRs [#75](https://github.com/gumptionthomas/cancelchain/pull/75) + [#77](https://github.com/gumptionthomas/cancelchain/pull/77) and impl PRs [#76](https://github.com/gumptionthomas/cancelchain/pull/76) (Phase 7a: translated all 94 legacy `Model.query` / `db.session.query(...)` call sites to the SA 2.0 idiom across `models.py`, `api.py`, `browser.py`, `chain.py`, `tests/test_models.py`, `tests/test_chain.py`; migrated 21 `Query[X]` return + 3 param annotations to `Select[tuple[X]]`; added `tests/_sa_helpers.py` with `_count`/`_count_select` helpers) and [#78](https://github.com/gumptionthomas/cancelchain/pull/78) (Phase 7b: switched to `db = SQLAlchemy(model_class=Base)` with `class Base(DeclarativeBase): pass`, moved all 11 `db.Model` subclasses to direct `(Base):` subclassing, removed the `# mypy: disable-error-code="no-untyped-call,no-any-return,name-defined,misc"` block, added 12 narrowly-scoped `# type: ignore[no-any-return]` ignores at chain-factory returns documenting FSA's facade typing limitation with a documented retirement path). Test count stayed 236 across both impl PRs; bench harness (~0.25 ms/step on local SQLite) unchanged. Originally planned as Phase 6 before that slot was repurposed for the recursive-CTE bottleneck fix; carried Phase 3's explicit sunset commitment for the per-file mypy override.
