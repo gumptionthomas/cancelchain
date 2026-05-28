@@ -128,12 +128,14 @@ migrations/
 The existing `.github/workflows/tests.yml` runs four steps (`ruff check`, `ruff format --check`, `pytest`, `mypy`). Phase 8 adds a fifth:
 
 ```yaml
-- run: uv run cancelchain db check
+- env:
+    FLASK_SQLALCHEMY_DATABASE_URI: sqlite://
+  run: uv run cancelchain db check
 ```
 
 `cancelchain db check` (Flask-Migrate 4.0+ via the FlaskGroup auto-discovery) compares `Base.metadata` to the schema implied by `alembic upgrade head` and exits non-zero if they differ. Catches the case where someone edits a model without generating a migration.
 
-The check needs an app context, which the `cancelchain` CLI provides through its `FlaskGroup(create_app=create_app)` wrapper — no `FLASK_APP` env var needed.
+The `cancelchain` CLI provides the app context through `FlaskGroup(create_app=create_app)`, but `create_app()` itself calls `db.init_app(app)` which errors out if `SQLALCHEMY_DATABASE_URI` is unset. Setting `FLASK_SQLALCHEMY_DATABASE_URI=sqlite://` (in-memory SQLite, never written) satisfies the init without creating any persistent state — `app.config.from_prefixed_env()` picks the `FLASK_*` env var up automatically. The check itself never opens the DB; it builds the migration-implied schema in-process and compares to `Base.metadata`. Same env var works for local runs.
 
 ## Changes
 
