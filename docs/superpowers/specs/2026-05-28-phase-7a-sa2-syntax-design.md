@@ -2,7 +2,7 @@
 
 **Status:** Draft for review
 **Date:** 2026-05-28
-**Scope:** Translate all 63 legacy `Model.query` / `db.session.query(...)` call sites to the SA 2.0 idiom (`db.session.execute(db.select(...))` + `.scalar()` / `.scalars()` / `.scalar_one_or_none()` extractors). Migrate the 16 `Query[X]` chain-factory return type annotations to `Select[X]`. The Phase 7 sequencing — split per ROADMAP — is "7a: syntax migration, then 7b: DeclarativeBase + mypy override removal." This spec covers 7a only; 7b gets its own spec/plan after 7a lands.
+**Scope:** Translate all legacy `Model.query` / `db.session.query(...)` call sites (36 in `src/cancelchain/models.py`, 1 in `src/cancelchain/api.py`, 27 in `tests/test_models.py`) to the SA 2.0 idiom (`db.session.execute(db.select(...))` + `.scalar()` / `.scalars()` / `.scalar_one_or_none()` extractors). Migrate the 17 `Query[X]` chain-factory return type annotations to `Select[tuple[X]]` (SA 2.x's `Select` is parameterized by row shape, not by the scalar entity). Update the three `chain.py` caller sites and three `tests/test_models.py` iteration sites that consume the migrated `Select`-returning DAO methods. The Phase 7 sequencing — split per ROADMAP — is "7a: syntax migration, then 7b: DeclarativeBase + mypy override removal." This spec covers 7a only; 7b gets its own spec/plan after 7a lands.
 
 ## Goal
 
@@ -13,7 +13,7 @@ Bring `src/cancelchain/models.py`, `src/cancelchain/api.py`, and `tests/test_mod
 - **No DeclarativeBase migration.** Phase 7b. `db.Model` stays the base class; `Model.query` remains defined but unused inside the codebase post-7a.
 - **No `mypy: disable-error-code` block removal.** The block stays at the top of `models.py` through 7a; Phase 7b removes it.
 - **No behavior changes.** This is purely a syntax pass. All 236 existing tests stay green. The generated SQL should be plan-equivalent (or at most equivalent up to SA 2.0's compiler optimizations).
-- **No work outside the three target files.** `api_client.py`, `wallet.py`, `chain.py`, `node.py`, `miller.py`, `command.py`, `tasks.py` are untouched.
+- **No work outside the listed target files.** `api_client.py`, `wallet.py`, `node.py`, `miller.py`, `command.py`, `tasks.py` are untouched. `chain.py` gets three small caller-side updates (the iteration sites in `Chain.unspent_outflows` / `Chain.unforgiven_outflows` / `Chain.unforgiven_address_outflows` that consume the migrated `ChainDAO` factory methods); see Changes / Files.
 - **No new chain-membership materialization changes.** Phase 6.6 closed those; 7a is purely a syntax pass.
 - **No new tests.** The translation is API-equivalent; existing tests catch regressions.
 - **No performance work.** The benchmark harness (PR #74) is available to verify equivalence.
@@ -21,7 +21,7 @@ Bring `src/cancelchain/models.py`, `src/cancelchain/api.py`, and `tests/test_mod
 ## Decisions taken during brainstorming
 
 - **Two-PR Phase 7 sequencing.** 7a (this spec) handles call-site syntax translation; 7b handles DeclarativeBase + mypy override removal. Three-PR split (7a / 7b / 7c) was rejected as overhead for a tiny mypy-removal-only PR.
-- **Chain-factory return types migrate to `Select[X]` in 7a.** Same composability as `Query[X]` (Select supports `.where()` / `.filter()` / `.subquery()` / `.join()`). Keeping `Query[X]` as a public return type while internally using `db.session.execute(db.select(...))` was rejected as half-measure.
+- **Chain-factory return types migrate to `Select[tuple[X]]` in 7a.** Same composability as `Query[X]` (Select supports `.where()` / `.filter()` / `.subquery()` / `.join()`). The row-shape `tuple[X]` parameterization matches SA 2.x's actual typing of `db.select(Model)`; see the translation-table note. Keeping `Query[X]` as a public return type while internally using `db.session.execute(db.select(...))` was rejected as half-measure.
 - **`.filter()` allowed alongside `.where()` in composed chains.** SA 2.0's Select accepts `.filter()` as an alias. Where mechanical search-and-replace gave us `.filter()`, leave it; new sites default to `.where()`. Don't churn for stylistic uniformity.
 - **`db.aliased` calls stay as-is.** SA 2.0's `aliased(Mapped, subquery)` (from `sqlalchemy.orm`) has the same signature as `db.aliased` (which delegates to it). No changes to the 5+ `db.aliased(...)` sites in `models.py`.
 - **Test query patterns also migrate.** Some other repos accept a "tests stay legacy" carve-out, but here the tests directly mirror what the production code looks like. Consistent style benefits readability and reduces future drift.
@@ -41,7 +41,7 @@ Bring `src/cancelchain/models.py`, `src/cancelchain/api.py`, and `tests/test_mod
 | `db.session.query(cls).filter(...)` | `db.select(cls).where(...)` (executed by caller via `db.session.execute(...)`) |
 | `db.session.query(db.func.count(cls.id)).one_or_none()` | `db.session.scalar(db.select(db.func.count(cls.id)))` |
 | `db.session.query(db.func.sum(cls.amount)).join(...)` (composed) | `db.select(db.func.sum(cls.amount)).join(...)`; execute via `db.session.scalar(...)` |
-| `Query[X]` (return type annotation) | `Select[X]` |
+| `Query[X]` (return type annotation) | `Select[tuple[X]]` — SA 2.x's `Select` is parameterized by row shape, not the scalar entity. `db.select(BlockDAO)` is typed `Select[tuple[BlockDAO]]`; using `Select[BlockDAO]` would surface `return-value`/`arg-type` mypy errors not covered by the existing per-file override block. Fall back to `Select[Any]` (matches the existing `wallet_leaderboard` precedent) only if `Select[tuple[X]]` proves awkward at a specific call site. |
 | `.subquery()` on Query | `.subquery()` on Select (identical method) |
 | `db.aliased(Model, subq)` | unchanged (still `db.aliased(...)`) |
 | `q.one_or_none()` after composition | `db.session.execute(q).scalar_one_or_none()` |
@@ -73,10 +73,10 @@ Return type stays `CTE`. Same SQL output (verify post-migration by re-running `t
 
 ### Chain-factory return types
 
-The 16 methods returning `Query[X]` become `Select[X]`. Sites (line numbers approximate):
+The 17 methods returning `Query[X]` become `Select[tuple[X]]` (`Select` is parameterized by row shape, not by the scalar entity — see the translation table note). Sites (line numbers approximate):
 
 **`TransactionDAO`:**
-- `transactions_chain(cls, block_chain: Query[BlockDAO]) -> Query[TransactionDAO]` (line 110-116) → `Select[BlockDAO]` / `Select[TransactionDAO]`.
+- `transactions_chain(cls, block_chain: Query[BlockDAO]) -> Query[TransactionDAO]` (line 110-116) → both annotations become `Select[tuple[BlockDAO]]` / `Select[tuple[TransactionDAO]]`.
 
 **`OutflowDAO`:**
 - `outflows_chain(cls, transactions_chain: Query[TransactionDAO]) -> Query[OutflowDAO]` (line 175-184).
@@ -85,24 +85,26 @@ The 16 methods returning `Query[X]` become `Select[X]`. Sites (line numbers appr
 - `inflows_chain(cls, transactions_chain: Query[TransactionDAO]) -> Query[InflowDAO]` (line 231-240).
 
 **`BlockDAO`:**
-- `block_chain` property (line 304-306) → `Select[BlockDAO]`.
-- `transactions_chain` property (line 308-310) → `Select[TransactionDAO]`.
-- `outflows_chain` property (line 312-314) → `Select[OutflowDAO]`.
-- `inflows_chain` property (line 316-318) → `Select[InflowDAO]`.
-- `address_transactions(self, address: str)` (line 329-330) → `Select[TransactionDAO]`.
-- `longest_chain_blocks_q(cls)` (line 381-389) → `Select[BlockDAO]`.
-- `longest_chain_transactions_q(cls)` (line 398-407) → `Select[TransactionDAO]`.
-- `longest_chain_outflows_q(cls)` (line 411-422) → `Select[OutflowDAO]`.
-- `longest_chain_inflows_q(cls)` (line 427-438) → `Select[InflowDAO]`.
+- `block_chain` property (line 304-306) → `Select[tuple[BlockDAO]]`.
+- `transactions_chain` property (line 308-310) → `Select[tuple[TransactionDAO]]`.
+- `outflows_chain` property (line 312-314) → `Select[tuple[OutflowDAO]]`.
+- `inflows_chain` property (line 316-318) → `Select[tuple[InflowDAO]]`.
+- `address_transactions(self, address: str)` (line 329-330) → `Select[tuple[TransactionDAO]]`.
+- `longest_chain_blocks_q(cls)` (line 381-389) → `Select[tuple[BlockDAO]]`.
+- `longest_chain_transactions_q(cls)` (line 398-407) → `Select[tuple[TransactionDAO]]`.
+- `longest_chain_outflows_q(cls)` (line 411-422) → `Select[tuple[OutflowDAO]]`.
+- `longest_chain_inflows_q(cls)` (line 427-438) → `Select[tuple[InflowDAO]]`.
 
 **`ChainDAO`:**
-- `blocks` property (line 497-501) → `Select[BlockDAO]`.
-- `transactions` property (line 503-507) → `Select[TransactionDAO]`.
-- `outflows` property (line 509-513) → `Select[OutflowDAO]`.
-- `inflows` property (line 515-519) → `Select[InflowDAO]`.
-- `unspent_outflows(self, address, filter_pending=False) -> Query[OutflowDAO]` (line 521-535) → `Select[OutflowDAO]`.
-- `unforgiven_outflows(self, subject, address=None, filter_pending=False)` → `Select[OutflowDAO]`.
-- `wallet_leaderboard(self, earliest=None, latest=None, limit=None)` → `Select[tuple[str, int]]` or similar (returns address + sum).
+- `blocks` property (line 497-501) → `Select[tuple[BlockDAO]]`.
+- `transactions` property (line 503-507) → `Select[tuple[TransactionDAO]]`.
+- `outflows` property (line 509-513) → `Select[tuple[OutflowDAO]]`.
+- `inflows` property (line 515-519) → `Select[tuple[InflowDAO]]`.
+- `address_transactions(self, address: str) -> Query[TransactionDAO]` (line 764-765, the `ChainDAO` delegate that calls into `BlockDAO.address_transactions`) → `Select[tuple[TransactionDAO]]`.
+- `unspent_outflows(self, address, filter_pending=False) -> Query[OutflowDAO]` (line 521-535) → `Select[tuple[OutflowDAO]]`.
+- `unforgiven_outflows(self, subject, address=None, filter_pending=False)` → `Select[tuple[OutflowDAO]]`.
+- `chains(cls) -> Query[ChainDAO]` (line 792-796) → `Select[tuple[ChainDAO]]`.
+- `wallet_leaderboard(self, earliest=None, latest=None, limit=None)` → `Select[Any]` (returns `(address, sum)` rows; tuple-shape typing here adds noise without value — falls back to the spec's documented `Select[Any]` escape hatch).
 
 ### Composed-method updates
 
@@ -131,9 +133,10 @@ Prefer the second form where the query yields a single scalar (sums, counts).
 
 ### Files
 
-- Modify: `src/cancelchain/models.py` — 35 call-site translations + 16 return-type annotation changes (`Query[X]` → `Select[X]`). Plus an updated import: `from sqlalchemy import Select` (replacing or augmenting the existing `Query` import).
+- Modify: `src/cancelchain/models.py` — 36 call-site translations + 17 return-type annotation changes (`Query[X]` → `Select[tuple[X]]`). Includes the previously-missed `ChainDAO.get` legacy `cls.query` site, the `ChainDAO.address_transactions` delegate annotation, the `PendingTxnDAO.json_datas` `cls.query.with_entities(...)` site (this is the actual method name; an earlier draft mis-called it `txn_jsons`), and the `ApiToken.get` `cls.query.filter_by(...)` site (an earlier draft mis-called it `WalletDAO.get` — there is no `WalletDAO` class in this codebase). Plus an updated import: `from sqlalchemy import Select` (replacing or augmenting the existing `Query` import).
 - Modify: `src/cancelchain/api.py` — 1 site (`lc_dao.address_transactions(address).first()` → `db.session.execute(lc_dao.address_transactions(address)).scalars().first()`).
-- Modify: `tests/test_models.py` — 27 call-site translations. No new tests; no test removed.
+- Modify: `src/cancelchain/chain.py` — 3 caller-side updates. `Chain.unspent_outflows` (line 342), `Chain.unforgiven_outflows` (line 361), and `Chain.unforgiven_address_outflows` (line 380) iterate the return value of `self.to_dao().unspent_outflows(...)` / `unforgiven_outflows(...)` directly. After migration those DAO methods return a `Select`, which is a SQL expression — iterating it would yield column clauses, not `OutflowDAO` rows. Each call site wraps with `db.session.execute(...).scalars()` to recover the row iterator. Requires adding `from cancelchain.database import db` to `chain.py` if not already present.
+- Modify: `tests/test_models.py` — 27 call-site translations + 3 `block_chain` iteration sites (lines 216, 335, 359 — `[b.id for b in longest.block.block_chain]`). After `BlockDAO.block_chain` becomes a `Select`, each iteration site wraps with `db.session.execute(longest.block.block_chain).scalars()`. No new tests; no test removed.
 
 No schema changes. No `database.py` changes. No dependency changes.
 
@@ -156,7 +159,7 @@ Test count: 236 (unchanged).
 
 - `grep -rn 'Model\.query\|\.query\.\|\.query\b' src/cancelchain/ tests/` returns nothing (or only matches for `requests_proxy` fixture-name false positives — verify by eye).
 - `grep -rn 'db\.session\.query' src/cancelchain/ tests/` returns nothing.
-- `grep -n 'Query\[' src/cancelchain/models.py` returns nothing (all annotations migrated to `Select[X]`).
+- `grep -n 'Query\[' src/cancelchain/models.py` returns nothing (all annotations migrated to `Select[tuple[X]]`, or `Select[Any]` for the one row-tuple leaderboard case).
 - `uv run mypy` exits 0 (the existing `mypy: disable-error-code` block at the top of `models.py` stays; no new errors introduced).
 - `uv run ruff check src tests` + `uv run ruff format --check src tests` exit 0.
 - `uv run pytest` exits 0; test count is 236.
@@ -190,7 +193,7 @@ Test count: 236 (unchanged).
 
 None at design time. Brainstorming resolved:
 - Two-PR sequencing (7a syntax, then 7b DeclarativeBase + mypy ignore removal).
-- Chain factories migrate to `Select[X]` in 7a, not stay `Query[X]`.
+- Chain factories migrate to `Select[tuple[X]]` in 7a, not stay `Query[X]`.
 - Both production code and tests migrate (no carve-out).
 
 ## What comes next

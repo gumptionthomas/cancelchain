@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Translate all 63 legacy `Model.query` / `db.session.query(...)` call sites (35 in `src/cancelchain/models.py`, 1 in `src/cancelchain/api.py`, 27 in `tests/test_models.py`) to the SQLAlchemy 2.0 idiom (`db.session.execute(db.select(...))` + `.scalar()` / `.scalars()` / `.scalar_one_or_none()` extractors). Migrate the 16 `Query[X]` chain-factory return-type annotations to `Select[X]`. Keep `db.Model` and the `mypy: disable-error-code` block at the top of `models.py` — both leave with Phase 7b.
+**Goal:** Translate all 64 legacy `Model.query` / `db.session.query(...)` call sites (36 in `src/cancelchain/models.py`, 1 in `src/cancelchain/api.py`, 27 in `tests/test_models.py`) to the SQLAlchemy 2.0 idiom (`db.session.execute(db.select(...))` + `.scalar()` / `.scalars()` / `.scalar_one_or_none()` extractors). Migrate the 17 `Query[X]` chain-factory return-type annotations to `Select[tuple[X]]` (SA 2.x's `Select` is parameterized by row shape, not by the scalar entity — see the spec's translation table). Update three `chain.py` caller sites and three `tests/test_models.py` iteration sites that previously consumed iterable `Query` results and now need `db.session.execute(...).scalars()` wrappers around the migrated `Select`-returning DAO methods. Keep `db.Model` and the `mypy: disable-error-code` block at the top of `models.py` — both leave with Phase 7b.
 
-**Architecture:** Pure syntax pass; no schema, no behavior, no test count changes. Replace `Query` import with `Select`; rewrite every legacy query site per the spec's translation table; rewrite the recursive CTE in `BlockDAO._block_chain` to build the base via `db.select(...).cte(recursive=True)`; chain factories on `TransactionDAO` / `OutflowDAO` / `InflowDAO` / `BlockDAO` / `ChainDAO` return `Select[X]`; the 6 downstream `ChainDAO` methods (`unspent_outflows`, `wallet_balance`, `unforgiven_outflows`, `subject_balance`, `subject_support`, `wallet_leaderboard`) compose on the new Select factories. Tests migrate the same way.
+**Architecture:** Pure syntax pass; no schema, no behavior, no test count changes. Replace `Query` import with `Select`; rewrite every legacy query site per the spec's translation table; rewrite the recursive CTE in `BlockDAO._block_chain` to build the base via `db.select(...).cte(recursive=True)`; chain factories on `TransactionDAO` / `OutflowDAO` / `InflowDAO` / `BlockDAO` / `ChainDAO` return `Select[tuple[X]]`; the 6 downstream `ChainDAO` methods (`unspent_outflows`, `wallet_balance`, `unforgiven_outflows`, `subject_balance`, `subject_support`, `wallet_leaderboard`) compose on the new Select factories. Three iteration sites in `chain.py` (`Chain.unspent_outflows`, `Chain.unforgiven_outflows`, `Chain.unforgiven_address_outflows`) wrap the DAO call with `db.session.execute(...).scalars()` to recover the row iterator. Tests migrate the same way; three `block_chain` list comprehensions in `tests/test_models.py` also wrap with `db.session.execute(...).scalars()`.
 
 **Tech Stack:** SQLAlchemy 2.0.50 + Flask-SQLAlchemy 3.1.1 (existing). `from sqlalchemy import Select` replaces `from sqlalchemy.orm import Query`. `db.select` / `db.session.execute` / `db.session.scalar` / `db.func` / `db.aliased` all resolve via Flask-SQLAlchemy's existing facade. No dependency changes; no `database.py` changes.
 
@@ -30,7 +30,7 @@
 | Task | PR | Files |
 |---|---|---|
 | 1 | docs PR | `docs/superpowers/plans/2026-05-28-phase-7a-sa2-syntax.md` (this file) + spec already on branch |
-| 2 | impl PR | `src/cancelchain/models.py`, `src/cancelchain/api.py`, `tests/test_models.py` |
+| 2 | impl PR | `src/cancelchain/models.py`, `src/cancelchain/api.py`, `src/cancelchain/chain.py`, `tests/test_models.py` |
 | 3 | acceptance | none (verification only) |
 
 ---
@@ -68,12 +68,17 @@ docs(phase-7a): add SA 2.0 syntax migration implementation plan
 Spells out the single-PR impl: branch off main, swap Query → Select
 import, walk through models.py class-by-class (TransactionDAO →
 OutflowDAO → InflowDAO → BlockDAO → ChainDAO → PendingTxnDAO →
-WalletDAO) translating every legacy Model.query / db.session.query
-call site to the SA 2.0 idiom, change the 16 Query[X] return-type
-annotations to Select[X], rewrite the recursive CTE in
+ApiToken) translating every legacy Model.query / db.session.query
+call site to the SA 2.0 idiom, change the 17 Query[X] return-type
+annotations to Select[tuple[X]] (SA 2.x's Select is parameterized
+by row shape, not the scalar entity), rewrite the recursive CTE in
 BlockDAO._block_chain via db.select(...).cte(recursive=True),
-migrate api.py:196 (one site), migrate tests/test_models.py
-(27 sites), verify all 236 existing tests stay green, run the
+migrate api.py:196 (one site), update three caller sites in
+chain.py (Chain.unspent_outflows / unforgiven_outflows /
+unforgiven_address_outflows) that previously iterated a Query and
+now need db.session.execute(...).scalars() wrappers, migrate
+tests/test_models.py (27 sites plus three block_chain iteration
+sites), verify all 236 existing tests stay green, run the
 benchmark harness (PR #74) to confirm perf is unchanged.
 
 Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
@@ -96,7 +101,7 @@ gh pr create --base main --head docs/phase-7a-design --title "docs(phase-7a): Ph
 - Adds the Phase 7a implementation plan (\`docs/superpowers/plans/2026-05-28-phase-7a-sa2-syntax.md\`).
 - No code changes.
 
-Phase 7 splits per ROADMAP guidance: **7a translates the 63 legacy query call sites** to the SA 2.0 idiom and migrates the 16 \`Query[X]\` chain-factory return types to \`Select[X]\`; 7b (separate spec) switches to typed \`DeclarativeBase\` and removes the \`mypy: disable-error-code\` block from \`models.py\`. Pure syntax pass — no schema, no behavior, no test-count change.
+Phase 7 splits per ROADMAP guidance: **7a translates the 64 legacy query call sites** to the SA 2.0 idiom and migrates the 17 \`Query[X]\` chain-factory return types to \`Select[tuple[X]]\` (SA 2.x's \`Select\` is parameterized by row shape, not the scalar entity); 7b (separate spec) switches to typed \`DeclarativeBase\` and removes the \`mypy: disable-error-code\` block from \`models.py\`. Also updates three caller sites in \`chain.py\` and three iteration sites in \`tests/test_models.py\` that consumed iterable \`Query\` results and now need \`db.session.execute(...).scalars()\` wrappers. Pure syntax pass — no schema, no behavior, no test-count change.
 
 ## Test plan
 - [x] Spec self-review passed.
@@ -114,9 +119,10 @@ EOF
 ## Task 2: Phase 7a impl — SA 2.0 syntax migration
 
 **Files:**
-- Modify: `src/cancelchain/models.py` (35 call-site translations + 16 return-type changes + import swap)
+- Modify: `src/cancelchain/models.py` (36 call-site translations + 17 return-type changes + import swap)
 - Modify: `src/cancelchain/api.py` (1 call-site translation + 1 new import)
-- Modify: `tests/test_models.py` (27 call-site translations)
+- Modify: `src/cancelchain/chain.py` (3 caller-side wrappers around migrated DAO methods + 1 new import)
+- Modify: `tests/test_models.py` (27 call-site translations + 3 `block_chain` iteration sites)
 
 The migration is long but mechanical. Steps 2–7 walk through each affected class / file. After each section, optionally run `uv run pytest -x` to catch errors early (the test suite is a forcing function for correctness).
 
@@ -192,8 +198,8 @@ After:
 
     @classmethod
     def transactions_chain(
-        cls, block_chain: Select[BlockDAO]
-    ) -> Select[TransactionDAO]:
+        cls, block_chain: Select[tuple[BlockDAO]]
+    ) -> Select[tuple[TransactionDAO]]:
         block_alias = db.aliased(BlockDAO, block_chain.subquery())
         return (
             db.select(TransactionDAO)
@@ -241,8 +247,8 @@ After:
 
     @classmethod
     def outflows_chain(
-        cls, transactions_chain: Select[TransactionDAO]
-    ) -> Select[OutflowDAO]:
+        cls, transactions_chain: Select[tuple[TransactionDAO]]
+    ) -> Select[tuple[OutflowDAO]]:
         txn_alias = db.aliased(TransactionDAO, transactions_chain.subquery())
         return (
             db.select(OutflowDAO)
@@ -298,8 +304,8 @@ After:
 ```python
     @classmethod
     def inflows_chain(
-        cls, transactions_chain: Select[TransactionDAO]
-    ) -> Select[InflowDAO]:
+        cls, transactions_chain: Select[tuple[TransactionDAO]]
+    ) -> Select[tuple[InflowDAO]]:
         txn_alias = db.aliased(TransactionDAO, transactions_chain.subquery())
         return (
             db.select(InflowDAO)
@@ -350,7 +356,7 @@ Before:
 After:
 ```python
     @property
-    def block_chain(self) -> Select[BlockDAO]:
+    def block_chain(self) -> Select[tuple[BlockDAO]]:
         return db.select(self._block_chain)
 ```
 
@@ -374,15 +380,15 @@ Before:
 After:
 ```python
     @property
-    def transactions_chain(self) -> Select[TransactionDAO]:
+    def transactions_chain(self) -> Select[tuple[TransactionDAO]]:
         return TransactionDAO.transactions_chain(self.block_chain)
 
     @property
-    def outflows_chain(self) -> Select[OutflowDAO]:
+    def outflows_chain(self) -> Select[tuple[OutflowDAO]]:
         return OutflowDAO.outflows_chain(self.transactions_chain)
 
     @property
-    def inflows_chain(self) -> Select[InflowDAO]:
+    def inflows_chain(self) -> Select[tuple[InflowDAO]]:
         return InflowDAO.inflows_chain(self.transactions_chain)
 ```
 
@@ -414,7 +420,7 @@ Before:
 
 After:
 ```python
-    def address_transactions(self, address: str) -> Select[TransactionDAO]:
+    def address_transactions(self, address: str) -> Select[tuple[TransactionDAO]]:
         return self.transactions_chain.where(TransactionDAO.address == address)
 ```
 
@@ -574,7 +580,7 @@ Before:
 After:
 ```python
     @classmethod
-    def longest_chain_blocks_q(cls) -> Select[BlockDAO]:
+    def longest_chain_blocks_q(cls) -> Select[tuple[BlockDAO]]:
         """Blocks in the longest chain, ordered tip→genesis."""
         return (
             db.select(BlockDAO)
@@ -603,7 +609,7 @@ Before:
 After:
 ```python
     @classmethod
-    def longest_chain_transactions_q(cls) -> Select[TransactionDAO]:
+    def longest_chain_transactions_q(cls) -> Select[tuple[TransactionDAO]]:
         """Transactions in the longest chain, ordered tip→genesis."""
         blocks_subq = cls.longest_chain_blocks_q().subquery()
         block_alias = db.aliased(BlockDAO, blocks_subq)
@@ -634,7 +640,7 @@ Before:
 After:
 ```python
     @classmethod
-    def longest_chain_outflows_q(cls) -> Select[OutflowDAO]:
+    def longest_chain_outflows_q(cls) -> Select[tuple[OutflowDAO]]:
         txn_subq = cls.longest_chain_transactions_q().subquery()
         txn_alias = db.aliased(TransactionDAO, txn_subq)
         return (
@@ -668,7 +674,7 @@ Before:
 After:
 ```python
     @classmethod
-    def longest_chain_inflows_q(cls) -> Select[InflowDAO]:
+    def longest_chain_inflows_q(cls) -> Select[tuple[InflowDAO]]:
         txn_subq = cls.longest_chain_transactions_q().subquery()
         txn_alias = db.aliased(TransactionDAO, txn_subq)
         return (
@@ -700,13 +706,13 @@ Before (each of the 4 properties looks like this):
 After:
 ```python
     @property
-    def blocks(self) -> Select[BlockDAO]:
+    def blocks(self) -> Select[tuple[BlockDAO]]:
         if self._is_longest():
             return BlockDAO.longest_chain_blocks_q()
         return self.block.block_chain
 ```
 
-Apply the same `Query[X]` → `Select[X]` swap to `transactions`, `outflows`, `inflows`.
+Apply the same `Query[X]` → `Select[tuple[X]]` swap to `transactions`, `outflows`, `inflows`.
 
 `ChainDAO.unspent_outflows` (line ~521):
 
@@ -732,7 +738,7 @@ After:
         self,
         address: str,
         filter_pending: bool = False,  # noqa: FBT001
-    ) -> Select[OutflowDAO]:
+    ) -> Select[tuple[OutflowDAO]]:
         inflows_alias = db.aliased(InflowDAO, self.inflows.subquery())
         stmt = self.outflows.where(OutflowDAO.address == address)
         stmt = stmt.join(inflows_alias, OutflowDAO.inflows, isouter=True)
@@ -803,7 +809,7 @@ After:
         subject: str,
         address: str | None = None,
         filter_pending: bool = False,  # noqa: FBT001
-    ) -> Select[OutflowDAO]:
+    ) -> Select[tuple[OutflowDAO]]:
         inflows_alias = db.aliased(InflowDAO, self.inflows.subquery())
         stmt = self.outflows.where(OutflowDAO.subject == subject)
         stmt = stmt.join(inflows_alias, OutflowDAO.inflows, isouter=True)
@@ -1032,7 +1038,21 @@ After:
         db.session.execute(db.delete(LongestChainBlockDAO))
 ```
 
-### Step 8: Migrate `ChainDAO.count` + `ChainDAO.ids` + `ChainDAO.chains` + `ChainDAO.longest` + `PendingTxnDAO.count` + remaining sites
+### Step 8: Migrate `ChainDAO.address_transactions` + `.count` + `.get` + `.ids` + `.chains` + `.longest` + `PendingTxnDAO.count` + remaining sites
+
+`ChainDAO.address_transactions` (line ~764) — annotation only; the body just delegates to `BlockDAO.address_transactions`:
+
+Before:
+```python
+    def address_transactions(self, address: str) -> Query[TransactionDAO]:
+        return self.block.address_transactions(address)
+```
+
+After:
+```python
+    def address_transactions(self, address: str) -> Select[tuple[TransactionDAO]]:
+        return self.block.address_transactions(address)
+```
 
 `ChainDAO.count` (line ~773):
 
@@ -1051,6 +1071,36 @@ After:
         return db.session.scalar(
             db.select(db.func.count()).select_from(cls)
         ) or 0
+```
+
+`ChainDAO.get` (line ~777) — the `cls.query` site:
+
+Before:
+```python
+    @classmethod
+    def get(
+        cls, block_hash: str | None = None, id: int | None = None
+    ) -> ChainDAO | None:
+        q = cls.query
+        if block_hash:
+            q = q.filter_by(block_hash=block_hash)
+        else:
+            q = q.filter_by(id=id)
+        return q.one_or_none()
+```
+
+After:
+```python
+    @classmethod
+    def get(
+        cls, block_hash: str | None = None, id: int | None = None
+    ) -> ChainDAO | None:
+        stmt = db.select(cls)
+        if block_hash:
+            stmt = stmt.filter_by(block_hash=block_hash)
+        else:
+            stmt = stmt.filter_by(id=id)
+        return db.session.execute(stmt).scalar_one_or_none()
 ```
 
 `ChainDAO.ids` (line ~787) — the `with_entities` site:
@@ -1086,7 +1136,7 @@ Before:
 After:
 ```python
     @classmethod
-    def chains(cls) -> Select[ChainDAO]:
+    def chains(cls) -> Select[tuple[ChainDAO]]:
         return (
             db.select(cls)
             .join(cls.block)
@@ -1131,13 +1181,22 @@ After:
         ) or 0
 ```
 
-`PendingTxnDAO.txn_jsons` (line ~840) — the `with_entities` site:
+`PendingTxnDAO.json_datas` (line ~836 — actual method name; an earlier draft mis-called it `txn_jsons`) — the `with_entities` site, which also composes `.filter(...)` and `.order_by(...)` calls before iteration:
 
 Before:
 ```python
     @classmethod
-    def txn_jsons(cls) -> Generator[str, None, None]:
+    def json_datas(
+        cls,
+        earliest: datetime.datetime | None = None,
+        expired: datetime.datetime | None = None,
+    ) -> Generator[str, None, None]:
         q = cls.query.with_entities(cls.json_data)
+        if earliest is not None:
+            q = q.filter(cls.received >= earliest)
+        if expired is not None:
+            q = q.filter(cls.timestamp >= expired)
+        q = q.order_by(cls.timestamp, cls.txid)
         for r in q:
             yield r[0]
 ```
@@ -1145,8 +1204,18 @@ Before:
 After:
 ```python
     @classmethod
-    def txn_jsons(cls) -> Generator[str, None, None]:
-        for (json_data,) in db.session.execute(db.select(cls.json_data)):
+    def json_datas(
+        cls,
+        earliest: datetime.datetime | None = None,
+        expired: datetime.datetime | None = None,
+    ) -> Generator[str, None, None]:
+        stmt = db.select(cls.json_data)
+        if earliest is not None:
+            stmt = stmt.where(cls.received >= earliest)
+        if expired is not None:
+            stmt = stmt.where(cls.timestamp >= expired)
+        stmt = stmt.order_by(cls.timestamp, cls.txid)
+        for (json_data,) in db.session.execute(stmt):
             yield json_data
 ```
 
@@ -1168,19 +1237,19 @@ After:
         ).scalar_one_or_none()
 ```
 
-`WalletDAO.get` (line ~980):
+`ApiToken.get` (line ~980 — there is no `WalletDAO` class in this codebase; `ApiToken` is the one with the `get(address)` classmethod):
 
 Before:
 ```python
     @classmethod
-    def get(cls, address: str) -> WalletDAO | None:
+    def get(cls, address: str) -> ApiToken | None:
         return cls.query.filter_by(address=address).one_or_none()
 ```
 
 After:
 ```python
     @classmethod
-    def get(cls, address: str) -> WalletDAO | None:
+    def get(cls, address: str) -> ApiToken | None:
         return db.session.execute(
             db.select(cls).filter_by(address=address)
         ).scalar_one_or_none()
@@ -1227,7 +1296,101 @@ grep -n 'from cancelchain.database import db\|^from cancelchain' src/cancelchain
 
 If `db` isn't imported, add the import at the appropriate alphabetical position.
 
-### Step 10: Migrate `tests/test_models.py` (27 sites)
+### Step 9b: Update `chain.py` callers of migrated DAO methods (3 sites)
+
+`ChainDAO.unspent_outflows` and `ChainDAO.unforgiven_outflows` previously returned `Query[OutflowDAO]`, which is iterable and yields `OutflowDAO` rows on iteration. After Step 6 they return `Select[tuple[OutflowDAO]]`, which is a SQL expression — iterating it directly would yield column clauses, not rows. The three `Chain.*` methods in `src/cancelchain/chain.py` that consume those DAO methods must wrap the call with `db.session.execute(...).scalars()`.
+
+First, verify `db` is imported in `chain.py`:
+
+```bash
+grep -n 'from cancelchain.database import db' src/cancelchain/chain.py
+```
+
+If missing, add the import alphabetically next to the other `cancelchain.*` imports.
+
+`Chain.unspent_outflows` (line ~335):
+
+Before:
+```python
+    def unspent_outflows(
+        self,
+        address: str,
+        limit: int | None = None,
+        filter_pending: bool = False,  # noqa: FBT001
+    ) -> Iterator[tuple[str, int, Outflow]]:
+        amount = 0
+        outflow_daos = self.to_dao().unspent_outflows(
+            address, filter_pending=filter_pending
+        )
+        for outflow_dao in outflow_daos:
+            ...
+```
+
+After:
+```python
+    def unspent_outflows(
+        self,
+        address: str,
+        limit: int | None = None,
+        filter_pending: bool = False,  # noqa: FBT001
+    ) -> Iterator[tuple[str, int, Outflow]]:
+        amount = 0
+        outflow_daos = db.session.execute(
+            self.to_dao().unspent_outflows(
+                address, filter_pending=filter_pending
+            )
+        ).scalars()
+        for outflow_dao in outflow_daos:
+            ...
+```
+
+`Chain.unforgiven_outflows` (line ~356) — same pattern:
+
+Before:
+```python
+        outflow_daos = self.to_dao().unforgiven_outflows(
+            subject, filter_pending=filter_pending
+        )
+        for outflow_dao in outflow_daos:
+            ...
+```
+
+After:
+```python
+        outflow_daos = db.session.execute(
+            self.to_dao().unforgiven_outflows(
+                subject, filter_pending=filter_pending
+            )
+        ).scalars()
+        for outflow_dao in outflow_daos:
+            ...
+```
+
+`Chain.unforgiven_address_outflows` (line ~372) — same pattern, with the `address=address` keyword preserved:
+
+Before:
+```python
+        outflow_daos = self.to_dao().unforgiven_outflows(
+            subject, address=address, filter_pending=filter_pending
+        )
+        for outflow_dao in outflow_daos:
+            ...
+```
+
+After:
+```python
+        outflow_daos = db.session.execute(
+            self.to_dao().unforgiven_outflows(
+                subject, address=address, filter_pending=filter_pending
+            )
+        ).scalars()
+        for outflow_dao in outflow_daos:
+            ...
+```
+
+Each loop consumes the iterator exactly once (it `break`s on a limit condition or runs to completion), so the single-pass `ScalarResult` iterator is safe — no `.all()` wrapping needed.
+
+### Step 10: Migrate `tests/test_models.py` (27 query sites + 3 `block_chain` iteration sites)
 
 The test sites are mostly:
 - `BlockDAO.query.count()` → `db.session.scalar(db.select(db.func.count()).select_from(BlockDAO))`
@@ -1265,13 +1428,28 @@ db.session.execute(
 ).scalars().all()
 ```
 
+Additionally, three list comprehensions iterate `longest.block.block_chain` directly (`test_longest_chain_block_property_matches_cte` line ~216, `test_longest_chain_block_rebuild_on_reorg` line ~335, `test_iterative_walk_matches_cte` line ~359). After Step 5, `BlockDAO.block_chain` returns `Select[tuple[BlockDAO]]`, which is a SQL expression — iterating it would yield column clauses, not `BlockDAO` rows. Each site needs an `execute(...).scalars()` wrapper:
+
+Before:
+```python
+cte_ids = [b.id for b in longest.block.block_chain]
+```
+
+After:
+```python
+cte_ids = [
+    b.id for b in db.session.execute(longest.block.block_chain).scalars()
+]
+```
+
 After all translations, verify:
 
 ```bash
 grep -n 'Model\.query\|\.query\.\|db\.session\.query\|with_entities' tests/test_models.py
+grep -n 'for b in longest\.block\.block_chain\|for b in .*\.block_chain[^.]' tests/test_models.py
 ```
 
-Expected: returns nothing.
+Expected: both return nothing (the second grep catches any remaining un-wrapped `block_chain` iteration; the regex `[^.]` ensures we only flag bare iteration, not `.block_chain.subquery()` or similar method-chained uses).
 
 ### Step 11: Verify all gates
 
@@ -1309,11 +1487,12 @@ git add src/cancelchain/models.py src/cancelchain/api.py tests/test_models.py
 git commit -m "$(cat <<'EOF'
 feat(models): SA 2.0 query syntax migration
 
-Phase 7a. Translates all 63 legacy Model.query / db.session.query
+Phase 7a. Translates all 64 legacy Model.query / db.session.query
 call sites to the SQLAlchemy 2.0 idiom (db.session.execute(
 db.select(...)) + .scalar() / .scalars() / .scalar_one_or_none()
-extractors). Migrates the 16 Query[X] chain-factory return-type
-annotations to Select[X].
+extractors). Migrates the 17 Query[X] chain-factory return-type
+annotations to Select[tuple[X]] (SA 2.x's Select is parameterized
+by row shape, not the scalar entity).
 
 Pure syntax pass: no schema changes, no behavior changes, no new
 tests, test count stays 236. The benchmark harness (PR #74)
@@ -1323,36 +1502,49 @@ src/cancelchain/models.py:
 - Import: drop Query (from sqlalchemy.orm), add Select (from
   sqlalchemy).
 - TransactionDAO.get + .transactions_chain: db.session.execute +
-  scalar_one_or_none; chain factory returns Select[TransactionDAO].
+  scalar_one_or_none; chain factory returns
+  Select[tuple[TransactionDAO]].
 - OutflowDAO.get + .outflows_chain: same pattern.
-- InflowDAO.inflows_chain: Select[InflowDAO]; the __init__'s
+- InflowDAO.inflows_chain: Select[tuple[InflowDAO]]; the __init__'s
   outflow_dao lookup also migrates.
 - BlockDAO._block_chain: recursive CTE via db.select(...).cte(
   recursive=True).union_all(...); same SQL output.
 - BlockDAO.block_chain / .transactions_chain / .outflows_chain /
   .inflows_chain / .address_transactions / .longest_chain_*_q:
-  return Select[X].
+  return Select[tuple[X]].
 - BlockDAO.get / .count / .block_hashes / .get_transaction_in_chain
   / .get_block_in_chain / .inflows_in_chain_count: 2.0 execution
   pattern with appropriate extractors.
-- ChainDAO.blocks / .transactions / .outflows / .inflows: Select[X].
+- ChainDAO.blocks / .transactions / .outflows / .inflows / .chains
+  / .address_transactions (the delegate at line 764): Select[tuple[X]].
 - ChainDAO.unspent_outflows / .wallet_balance / .unforgiven_outflows
   / .subject_balance / .subject_support / .wallet_leaderboard:
   Select composition (.where instead of .filter for new sites,
   .filter preserved where it was part of a longer chain since
   Select accepts both); aggregate queries use db.session.scalar(
-  db.select(db.func.sum(...))).
+  db.select(db.func.sum(...))). wallet_leaderboard returns
+  Select[Any] since it yields (address, sum) row tuples rather
+  than a single Model.
 - ChainDAO.sync_longest_chain_blocks + _rebuild_longest_chain_blocks:
   bootstrap EXISTS check, walk lookup, DELETE statements migrated
   to db.session.execute(db.delete(...)) and db.session.scalar(
   db.select(db.exists(...))).
-- ChainDAO.count / .ids / .chains / .longest + PendingTxnDAO.count
-  / .txn_jsons / .get + WalletDAO.get: 2.0 idioms throughout.
+- ChainDAO.count / .get / .ids / .longest + PendingTxnDAO.count
+  / .json_datas / .get + ApiToken.get: 2.0 idioms throughout.
 
 src/cancelchain/api.py:
 - One site (lc_dao.address_transactions(address).first()) wrapped
   with db.session.execute(...).scalars().first(); added missing
   `from cancelchain.database import db` import.
+
+src/cancelchain/chain.py:
+- Three caller-side updates. After ChainDAO.unspent_outflows /
+  unforgiven_outflows return a Select, the iteration sites in
+  Chain.unspent_outflows (line 342), Chain.unforgiven_outflows
+  (line 361), and Chain.unforgiven_address_outflows (line 380)
+  wrap the DAO call with db.session.execute(...).scalars() to
+  recover the row iterator. Adds `from cancelchain.database import
+  db` import.
 
 tests/test_models.py:
 - New _count(model) test helper for the common COUNT(*) pattern.
@@ -1360,6 +1552,10 @@ tests/test_models.py:
   use db.session.execute + .scalars().all() / .scalars().first();
   count sites use the _count helper; deletes use db.session.execute
   + db.delete).
+- Three `[b.id for b in longest.block.block_chain]` iteration sites
+  (lines 216, 335, 359) wrap with db.session.execute(
+  longest.block.block_chain).scalars() now that block_chain is a
+  Select.
 
 Phase 7a explicitly defers (per spec):
 - Phase 7b: typed DeclarativeBase + remove mypy override block at
@@ -1378,8 +1574,9 @@ EOF
 git push -u origin feat/phase-7a-sa2-syntax
 gh pr create --base main --title "feat(models): SA 2.0 query syntax migration" --body "$(cat <<'EOF'
 ## Summary
-- Translates all 63 legacy \`Model.query\` / \`db.session.query(...)\` call sites to the SQLAlchemy 2.0 idiom (\`db.session.execute(db.select(...))\` + \`.scalar()\` / \`.scalars()\` / \`.scalar_one_or_none()\` extractors).
-- Migrates the 16 \`Query[X]\` chain-factory return-type annotations to \`Select[X]\`.
+- Translates all 64 legacy \`Model.query\` / \`db.session.query(...)\` call sites to the SQLAlchemy 2.0 idiom (\`db.session.execute(db.select(...))\` + \`.scalar()\` / \`.scalars()\` / \`.scalar_one_or_none()\` extractors).
+- Migrates the 17 \`Query[X]\` chain-factory return-type annotations to \`Select[tuple[X]]\` (SA 2.x's \`Select\` is parameterized by row shape, not the scalar entity).
+- Updates three caller sites in \`chain.py\` (\`Chain.unspent_outflows\` / \`unforgiven_outflows\` / \`unforgiven_address_outflows\`) and three iteration sites in \`tests/test_models.py\` (\`[b.id for b in longest.block.block_chain]\`) that consumed iterable \`Query\` results and now need \`db.session.execute(...).scalars()\` wrappers.
 - Pure syntax pass — no schema changes, no behavior changes, no new tests, no test-count change (236 stays 236).
 
 ## Why
@@ -1387,7 +1584,7 @@ Phase 7a per the split decided during brainstorming. Phase 7b (separate spec) sw
 
 ## Out of scope (per spec)
 - Phase 7b: typed DeclarativeBase + remove the \`mypy: disable-error-code\` block at the top of \`models.py\`.
-- No changes outside \`models.py\`, \`api.py\`, \`tests/test_models.py\`.
+- No changes outside \`models.py\`, \`api.py\`, \`chain.py\`, \`tests/test_models.py\`.
 
 ## Test plan
 - [x] \`uv run mypy\` exits 0.
@@ -1504,7 +1701,7 @@ If Copilot review requests substantive changes, push a new commit (do not amend)
 Iterating `db.session.execute(stmt).scalars()` twice is undefined. The migration must wrap with `.all()` or pass through `list(...)` if the result needs reuse. Specific watchpoints:
 
 - `BlockDAO.block_hashes` — iterates `db.session.execute(stmt)` (Row tuples, not scalars) once via a `for` loop. Single iteration → safe.
-- `PendingTxnDAO.txn_jsons` — same single-iteration pattern.
+- `PendingTxnDAO.json_datas` — same single-iteration pattern.
 - Test loops that consume the same query twice — almost certainly need `.scalars().all()` instead.
 
 Grep after migration: `grep -B1 -A2 '\.scalars()' src/cancelchain/ tests/` and visually verify each site either calls `.all()` / `.first()` / `.one()` next, or iterates exactly once.
@@ -1529,13 +1726,13 @@ SA 2.0's Select accepts both `.filter()` and `.where()` as aliases. The migratio
 
 ### Risk: mypy errors surface despite the existing override block
 
-The mypy override at the top of `models.py` covers `no-untyped-call,no-any-return,name-defined,misc`. SA 2.0 typing improvements may surface different error codes (e.g., `arg-type` on `Select[X]` parameter mismatches, `return-value` on chain-factory returns). If new error codes appear, add them to the existing block in 7a — Phase 7b removes the whole block anyway, so don't waste cycles fixing individual ignores.
+The mypy override at the top of `models.py` covers `no-untyped-call,no-any-return,name-defined,misc`. SA 2.0 typing improvements may surface different error codes (e.g., `arg-type` on `Select[tuple[X]]` parameter mismatches, `return-value` on chain-factory returns). The choice of `Select[tuple[X]]` (instead of the naive `Select[X]`) is what keeps these clean in the common case — `db.select(BlockDAO)` is typed `Select[tuple[BlockDAO]]` in SA 2.x, and using the entity-only form would itself surface `return-value`/`arg-type` errors not covered by the existing block. If new error codes still appear after migration, add them to the existing block in 7a — Phase 7b removes the whole block anyway, so don't waste cycles fixing individual ignores.
 
 ### Risk: `db.exists` vs `db.session.query(...).exists()`
 
 The legacy `db.session.query(SomeModel).exists()` returns an `exists()` clause expression. The 2.0 form: `db.exists(db.select(SomeModel))` — passes the select inward. The bootstrap fast-path in `sync_longest_chain_blocks` uses this; verify post-migration that the SQL is `SELECT EXISTS (SELECT 1 FROM longest_chain_block)`.
 
-### Risk: `db.session.query` showing up in non-models.py / non-api.py / non-test_models.py files
+### Risk: `db.session.query` showing up in unexpected files
 
 Wide grep to catch any miss:
 
@@ -1543,7 +1740,7 @@ Wide grep to catch any miss:
 grep -rn 'Model\.query\|\.query\.\|db\.session\.query\|with_entities' src/ tests/ bench/
 ```
 
-Expected: empty after Step 11. If any other file (e.g., `chain.py`, `node.py`, `miller.py`) somehow contains a legacy site, surface it — the spec scope assumed only `models.py` + `api.py` + `tests/test_models.py`. Investigate before deciding whether to expand scope (likely just expand the impl PR to include the additional file).
+Expected: empty after Step 11 across `models.py`, `api.py`, `chain.py`, and `tests/test_models.py` (all 7a-scope files). If any other file (`node.py`, `miller.py`, `command.py`, `tasks.py`, anything under `bench/`) surfaces a legacy site, that's out-of-scope — surface it to the user before expanding scope. The most likely additional surface is `bench/`, which is intentionally not in scope here (see the next risk).
 
 ### Risk: wallet_leaderboard's Select[Any] type
 
