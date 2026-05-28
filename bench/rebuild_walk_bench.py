@@ -20,6 +20,7 @@ a temp SQLite DB file at /tmp until process exit.
 from __future__ import annotations
 
 import argparse
+import atexit
 import datetime
 import os
 import tempfile
@@ -34,6 +35,13 @@ os.environ.setdefault('FLASK_SECRET_KEY', 'a' * 32)
 _TMPDB_FD, _TMPDB_PATH = tempfile.mkstemp(suffix='.db')
 os.close(_TMPDB_FD)
 os.environ['FLASK_SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{_TMPDB_PATH}'
+
+# Register cleanup at interpreter exit so the tmp DB file is removed
+# even if main() never runs (e.g., module imported by an IDE / linter
+# / dependency scanner) or exits via an uncaught exception.
+# Path.unlink(missing_ok=True) is idempotent, so this is safe to run
+# alongside the explicit cleanup in main()'s finally block.
+atexit.register(lambda: Path(_TMPDB_PATH).unlink(missing_ok=True))
 
 from cancelchain import create_app  # noqa: E402
 from cancelchain.database import db  # noqa: E402
