@@ -27,11 +27,14 @@ import pytest
 
 from cancelchain.block import Block
 from cancelchain.chain import REWARD
-from cancelchain.exceptions import InvalidTransactionError
+from cancelchain.exceptions import (
+    InvalidCoinbaseError,
+    InvalidTransactionError,
+)
 from cancelchain.miller import Miller
 from cancelchain.payload import Inflow, Outflow
 from cancelchain.transaction import Transaction
-from cancelchain.util import now
+from cancelchain.util import now, now_iso
 
 # Matches the `easy_mill_chain` session-scoped fixture's patched
 # MAX_TARGET — every target in tests is the 64-byte all-F hash so PoW
@@ -237,3 +240,101 @@ def test_a2_e_partial_chain_adoption_via_invalid_tip(
         assert post_chain is not None
         assert post_chain.length == original_length
         assert post_chain.block_hash == local_genesis_hash
+
+
+@pytest.mark.xfail(
+    reason=(
+        'Audit finding A4.c — severity Medium — Chain.validate_block_coinbase '
+        'enforces only the REWARD amount and S/G/M shape; it does not check '
+        "that the coinbase's txid is fresh (not already persisted in the "
+        "chain's lineage). A MILLER-role adversary can mine a block whose "
+        'coinbase is a verbatim replay of any prior block coinbase, '
+        'appending a duplicate block_transactions m2m row that inflates the '
+        "original miller's longest-chain wallet_balance by one REWARD per "
+        'replay (the InflowDAO unique(txid, idx) still prevents the inflated '
+        'balance from being directly spendable, but the accounting query '
+        'layer reports the wrong number). See '
+        'docs/superpowers/audits/2026-05-29-verification-pipeline-audit.md'
+    ),
+    strict=True,
+)
+def test_a4_c_ii_coinbase_replay_inflates_balance(
+    app, time_machine, wallet
+) -> None:
+    """A4.c.ii: replaying another miller's coinbase in a fresh block.
+
+    Pre-state: Local chain has a single mined block B_orig whose coinbase
+    T_cb pays the milling wallet REWARD. T_cb is in TransactionDAO and
+    m2m-associated with B_orig.
+    Attack: The adversary (acting as a MILLER) builds B_adv extending
+    B_orig with txns=[T_cb] only (T_cb in the last position so
+    Block.regular_txns is empty and the coinbase-positional rule
+    identifies T_cb as B_adv's coinbase). They mill PoW honestly and
+    invoke Node.receive_block on the constructed block. Today
+    Chain.validate_block_coinbase passes (correct REWARD amount, empty
+    S/G/M comps match T_cb's single-outflow shape), so B_adv is persisted
+    with a new block_transactions m2m row.
+    Expected after remediation: Chain.validate_block_coinbase raises
+    InvalidCoinbaseError (e.g., via a new DuplicateCoinbaseError) when
+    the candidate coinbase's txid is already persisted in the chain's
+    lineage — analogous to the inflow-uniqueness check already enforced
+    by Chain.validate_txn_inflow via get_inflows_count.
+    Observed today: receive_block succeeds; T_cb is m2m'd with both
+    B_orig and B_adv, so the longest_chain_outflows_q join produces two
+    rows of T_cb's REWARD outflow and wallet_balance double-counts.
+    """
+    with app.app_context():
+        # Pre-state: mine B_orig with our wallet as the milling wallet, so
+        # its coinbase T_cb pays REWARD to `wallet.address`.
+        now_dt = now()
+        when_dt = now_dt - datetime.timedelta(hours=1)
+        time_machine.move_to(when_dt)
+        m = Miller(milling_wallet=wallet)
+        b_orig = m.create_block()
+        m.mill_block(b_orig)
+        t_cb = b_orig.coinbase
+        assert t_cb is not None
+        assert t_cb.address == wallet.address
+        cb_outflow = t_cb.get_outflow(0)
+        assert cb_outflow is not None
+        assert cb_outflow.amount == REWARD
+        chain = m.longest_chain
+        assert chain is not None
+        # Sanity: pre-attack balance is exactly REWARD (one coinbase).
+        assert chain.balance(wallet.address) == REWARD
+
+        # Step forward a beat so B_adv's timestamp won't trip
+        # OutOfOrderBlockError (block.timestamp >= prev_block.timestamp).
+        when_dt += datetime.timedelta(minutes=1)
+        time_machine.move_to(when_dt)
+
+        # Attack: simulate "adversary saw T_cb on the wire" by
+        # round-tripping it through JSON to get a fresh Transaction
+        # instance — same txid, same signature, same data_csv.
+        t_cb_replayed = Transaction.from_json(t_cb.to_json())
+        assert t_cb_replayed.txid == t_cb.txid
+
+        # Hand-build B_adv extending the chain's tip with the replayed
+        # coinbase as its only (last → coinbase-by-position) transaction.
+        # We mirror Block.seal's contract manually so the coinbase slot
+        # is occupied by T_cb instead of a fresh M_adv-paying coinbase.
+        b_adv = Block()
+        chain.link_block(b_adv)
+        # add_txn(is_coinbase=True) calls validate_coinbase (schema +
+        # signature + txid) on the replayed coinbase — all pass because
+        # T_cb's bytes are unchanged from its original signing.
+        b_adv.add_txn(t_cb_replayed, is_coinbase=True)
+        b_adv.merkle_root = b_adv.get_merkle_root()
+        b_adv.timestamp = now_iso()
+        b_adv.mill()
+        assert b_adv.block_hash is not None
+        # Sanity: B_adv was honestly milled (block_hash satisfies target).
+        assert b_adv.is_proved
+
+        # After remediation: validate_block_coinbase rejects the
+        # duplicate-coinbase-txid B_adv with InvalidCoinbaseError (or a
+        # new DuplicateCoinbaseError subclass thereof). Today the chain
+        # accepts B_adv and the duplicate m2m association inflates the
+        # wallet balance to 2 * REWARD.
+        with pytest.raises(InvalidCoinbaseError):
+            m.receive_block(b_adv.to_json())

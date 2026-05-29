@@ -497,7 +497,130 @@ Crucially for this adversary: `Miller.create_block` (`src/cancelchain/miller.py:
 
 ### Adversary 4: Replay attacker
 
-[Placeholder — filled in by Task 6.]
+**Capabilities:** Has seen previously-broadcast transactions (they're public). Has not necessarily solved any block. Has whatever roles are useful for resubmission (often TRANSACTOR is enough; attack c.ii additionally requires MILLER).
+
+**Validation pipeline summary.** Replay attacks enter at one of two endpoints. For transaction replay (attacks a, c.i): `TxnView.post` (`src/cancelchain/api.py:366`) calls `Node.receive_transaction` (`src/cancelchain/node.py:76`). The receive path runs `Transaction.from_json` → URL/body txid check → `txn.validate()` (schema + signature + txid; `RegularTransactionModel` requires `min_length=1` inflows) → pending-pool admission. There is **no** check against `TransactionDAO` for already-mined txids — gap A1.f. For block-embedded replay (attacks b, c.ii, d): `BlockView.post` (`src/cancelchain/api.py:308`) calls `Node.receive_block` → `block.validate()` → `Chain.add_block` → `Chain.validate_block`. The chain-context txid/inflow checks (`Chain.get_transaction`, `Chain.get_inflows_count` — `src/cancelchain/chain.py:294,312`) walk the **candidate block's lineage** (recursive `BlockDAO._block_chain` CTE on `prev_id`), not the cross-chain DB-wide transaction set. This is by design (forks must remain independently validatable) but creates the cross-fork-replay surface examined below.
+
+Two cross-cutting DB facts shape the traces:
+
+1. `TransactionDAO.txid` has `unique=True` (`src/cancelchain/models.py:59`), and `Transaction.to_dao()` returns the **existing** row when the txid is already persisted (`src/cancelchain/transaction.py:257`). Cross-fork replay of the same txid therefore never raises a DB integrity error — it just appends a new `block_transactions` m2m row.
+2. `Block.regular_txns` is positional: `self.txns[0:-1]` (`src/cancelchain/block.py:117`); the coinbase is whichever txn is last in the list. No rule binds the coinbase's signing address to "the miller's wallet" — a miller can put any well-formed coinbase-shaped transaction in the last slot, including another miller's coinbase from the chain's history.
+
+#### Attack a: Resubmit a confirmed transaction into the pending pool
+
+**Pre-state:** Transaction T was mined into block B at chain height h. T is in `TransactionDAO` (persistent). The replay attacker observed T on the network (or fetched it via `GET /api/transaction/<txid>`) and re-broadcasts it.
+
+**Attack:** POST T's exact JSON to `/api/transaction/<T.txid>`. The replay-attacker frame is broader than A1.f's same-node-after-drain case: consider an honest peer node N that has T in its persisted chain (received via block gossip) but never had T in its pending pool, then the attacker resubmits T to N's API.
+
+**Trace:**
+1. `src/cancelchain/api.py:379` → `Node.receive_transaction` (`src/cancelchain/node.py:76`).
+2. `src/cancelchain/node.py:84,87,89` — `Transaction.from_json`, URL/body txid check, `txn.validate()`. T's bytes are unchanged from when it was originally mined; schema/signature/txid all pass.
+3. `src/cancelchain/node.py:90` — `if txn not in self.pending_txns`. `PendingTxnSet.__contains__` (`src/cancelchain/transaction.py:367-370`) checks `PendingTxnDAO.get(txn.txid) is not None`. On the peer that received T only via block gossip, T was never in pending; on the same node that mined T, the miller drained pending after sealing. Either way: not in pending. Check returns False; the "add to pending" branch runs.
+4. `src/cancelchain/node.py:92` — `self.pending_txns.add(txn)`. `PendingTxnDAO.txid`'s `unique=True` (`src/cancelchain/models.py:841`) protects only against duplicate **pending** rows, not against collisions with the persisted `TransactionDAO.txid` unique constraint. No cross-table check exists. T enters pending.
+
+**Outcome:** ACCEPTED at step 4. **Same gap as A1.f (see Adversary 1, Attack f).** Adversary 4's replay-attacker frame confirms the cross-node case A1.f's demonstration test already simulates (by draining pending before the replay); it does not surface a distinct angle. The validation gap is identical: `Node.receive_transaction` consults the pending pool (via `PendingTxnSet.__contains__`) but never consults `TransactionDAO` for mined-txid membership before admitting to pending.
+
+**Result:** Related to A1.f; no new finding. The remediation sketch in A1.f (`TransactionDAO.get(txn.txid)` lookup before `pending_txns.add`) closes both the same-node and cross-node frames in one fix.
+
+#### Attack b: Resubmit the same transaction into a competing chain fork
+
+**Pre-state:** Two competing chains exist with a shared ancestor block_0. Chain X has tip block_X with regular transaction T persisted; T spends outflow O = (T_prior.txid, 0) where T_prior is a coinbase on the shared ancestor block_0. Chain Y is a parallel fork branching from block_0; Y has its own tip block_Y at the same or different height as X. T is **not** in Y's lineage. The adversary is a miller (or persuades a miller) on chain Y who wishes to include T verbatim in a new Y block.
+
+**Attack:** Adversary constructs block_Y_new extending block_Y with `txns = [T, coinbase_Y_new]` (T as the only regular txn, plus a new coinbase paying themselves). Mills and POSTs to `/api/block/<block_Y_new.block_hash>`.
+
+**Trace:**
+1. `src/cancelchain/node.py:150-157` — `Block.from_json` + `block.validate()`. T's schema/signature/txid are unchanged from when it was mined on X; `validate_transaction` (block-layer) passes. The new coinbase is well-formed. `validate_merkle_root` / `validate_block_hash` pass (block was milled honestly with these inputs).
+2. `Chain.add_block` → `Chain.validate_block` (`src/cancelchain/chain.py:170`). Chain-context checks against Y's lineage:
+   - `FutureBlockError` / `OutOfOrderBlockError` / `InvalidPreviousHashError` / `InvalidBlockIndexError` / `InvalidTargetError` — all pass (block_Y_new is honestly constructed).
+3. Line 196-197: `for txn in block.regular_txns: self.validate_block_txn(block, txn)` runs for T.
+4. `Chain.validate_block_txn` (`src/cancelchain/chain.py:200`) → `validate_txn_inflow(block_Y_new, T, T.inflows[0])`:
+   - Line 254: `ioflow_txn = self.get_transaction(T_prior.txid, start_block=block_Y_new)`. `Chain.get_transaction` walks `block_Y_new`'s ancestry via `Block.from_db(prev_hash)` (`src/cancelchain/chain.py:298-310`); T_prior is in the shared ancestor block_0, so the walk finds it. Pass.
+   - Line 263-269: address resolution — T's `address` is whichever wallet originally signed T; T_prior's outflow O has the same address (T was a valid spend of O on chain X, so addresses already aligned). Pass.
+   - Line 271-273: `get_inflows_count(block_Y_new, T_prior.txid, 0)`. `Chain.get_inflows_count` (`src/cancelchain/chain.py:312-333`) walks block_Y_new's ancestry via `Block.from_db(prev_hash)`, then defers to `BlockDAO.inflows_in_chain_count` (`src/cancelchain/models.py:362-371`) which uses the **per-block recursive CTE `_block_chain`** scoped to block_Y_new's lineage. T's inflow row exists (it was created when T was first persisted on X), but the join sees only inflows whose owning transaction is in block_Y_new's m2m lineage — i.e., chain Y's blocks. T is NOT yet in Y, so `num_inflows == 0`. Pass.
+5. `Chain.validate_block_coinbase` (line 198) passes for coinbase_Y_new.
+6. `Chain.add_block` line 155: `block.to_db()`. `Block.to_dao()` builds a `BlockDAO` with `transaction_daos=[txn.to_dao() for txn in self.txns]`. For T: `Transaction.to_dao()` (`src/cancelchain/transaction.py:257`) does `TransactionDAO.get(txid) or TransactionDAO(...)` — the existing row is returned. The `BlockDAO.__init__` then appends this existing TransactionDAO to `self.transactions`, which writes a new `block_transactions` m2m row (block_Y_new ↔ T). **No `IntegrityError` on `TransactionDAO.txid`'s `unique=True`.**
+
+**Outcome:** ACCEPTED at step 6 — block_Y_new is persisted, and T is now associated via the m2m with both block_X (its original home on chain X) and block_Y_new. Per-chain validation continues to give correct results: on chain X, T's outputs land on X's lineage; on chain Y, T's outputs land on Y's lineage. The recipient is the same on both chains (T's outflow addresses haven't changed); no value is redirected.
+
+**Result:** Acceptance is structurally correct — T was already a valid spend of O, and Y's chain-scoped validation never sees X's T-inflow row. The cross-fork double-persistence is harmless on its own: each chain's longest-chain query is scoped to that chain's lineage via the recursive CTE / `LongestChainBlockDAO` materialization, so wallet balances on chain X are unaffected by Y's T-association and vice versa. The pure-replay variant of Attack b transfers no value to the adversary (T's outputs go to the original recipient on whichever chain wins). **No finding.** The economically interesting variant — using a **different** txid that consumes the same O — is Attack d's classic PoW reorg double-spend; the txid-replay variant here just confirms the chain-scoping invariant holds.
+
+#### Attack c: Replay a coinbase transaction
+
+The coinbase is a special-shape transaction (no inflows, ≤4 outflows, signed by whoever generated it). Two attack surfaces:
+
+##### Attack c.i: Standalone coinbase replay via /api/transaction
+
+**Pre-state:** Coinbase transaction T_cb from a previously-mined block on the chain. The adversary has its bytes (public).
+
+**Attack:** POST T_cb to `/api/transaction/<T_cb.txid>` as if it were a regular transaction.
+
+**Trace:**
+1. `src/cancelchain/api.py:379` → `Node.receive_transaction` (`src/cancelchain/node.py:76`).
+2. `src/cancelchain/node.py:84` — `Transaction.from_json` uses base `TransactionModel` (`src/cancelchain/transaction.py:78`), which allows `inflows: min_length=0`. T_cb parses successfully.
+3. `src/cancelchain/node.py:87,89` — URL/body txid check passes; `txn.validate()` runs `RegularTransactionModel.model_validate` (`src/cancelchain/transaction.py:218-221`), which tightens `inflows` to **`min_length=1`** (`src/cancelchain/transaction.py:102-104`). T_cb has zero inflows → Pydantic validation error → `InvalidTransactionError`.
+
+**Outcome:** REJECTED at step 3 via `InvalidTransactionError` (Pydantic message: `inflows: List should have at least 1 item`).
+
+**Result:** Validation correctly rejects. The `RegularTransactionModel` / `CoinbaseTransactionModel` schema split (`src/cancelchain/transaction.py:101-109`) is exactly the defense against this attack — coinbase-shaped transactions cannot enter via the regular-transaction endpoint. No finding.
+
+##### Attack c.ii: Embed another miller's coinbase transaction in your own block
+
+**Pre-state:** Local chain has a block B_orig at index h whose coinbase is T_cb (paying miller M_orig the canonical REWARD; T_cb is in `TransactionDAO` and m2m'd with B_orig). The adversary holds the MILLER role with their own wallet M_adv. They want to mine a new block B_adv extending the chain's tip while re-using T_cb verbatim as B_adv's coinbase.
+
+**Attack:** Adversary constructs `B_adv` with `txns = [T_cb]` (just the replayed coinbase, no regular txns). They `link` B_adv to the current tip, set `merkle_root` and `timestamp` manually (bypassing `Block.seal`, which would call `Block.add_coinbase` and overwrite with a fresh M_adv-paying coinbase), mill until PoW lands, and POST to `/api/block/<B_adv.block_hash>` under MILLER credentials.
+
+**Trace:**
+1. `src/cancelchain/node.py:150-157` — `Block.from_json` + `block.validate()`:
+   - `BlockModel.validate_difficulty` (`src/cancelchain/block.py:88-92`) — `block_hash < target` checked. Pass (adversary mined honestly).
+   - `validate_block_hash` / `validate_merkle_root` — pass (header and merkle commit to the submitted `[T_cb]`).
+   - `for txn in self.regular_txns: validate_transaction(...)` — `regular_txns = self.txns[0:-1] = []` (the only txn is the coinbase; nothing to iterate). Pass.
+   - `validate_coinbase()` (`src/cancelchain/block.py:274-287`):
+     - `cb = self.coinbase = self.last_txn = T_cb`. Present. Pass.
+     - `cb.validate_coinbase()` runs `CoinbaseTransactionModel.model_validate` + signature + txid. T_cb's signature is M_orig's (still valid against T_cb's stored public_key); txid still matches `mill_hash(data_csv)`. Pass.
+     - `comps = []` (block has no S/G/M because no regular_txns); `[o.amount for o in cb.outflows[1:]] = []` (T_cb has one outflow). `[] == []` → pass.
+2. `src/cancelchain/node.py:158-164` — parent in `BlockDAO`. Pass.
+3. `Chain.add_block` → `Chain.validate_block` (`src/cancelchain/chain.py:170`):
+   - Lines 172-195: timestamp / prev_hash / idx / target checks — all pass.
+   - Line 196-197: `for txn in block.regular_txns: validate_block_txn(...)` — `regular_txns == []`. Loop body skipped. **No chain-context check runs on T_cb.**
+   - Line 198: `validate_block_coinbase(block)` (`src/cancelchain/chain.py:278-285`) — `block.validate_coinbase()` re-runs (pass, same as step 1); `outflow.amount = REWARD == reward`. Pass.
+4. Line 155: `block.to_db()`. `Block.to_dao()` builds `transaction_daos = [T_cb.to_dao()]`. `Transaction.to_dao()` (`src/cancelchain/transaction.py:257`): `TransactionDAO.get(T_cb.txid)` returns the existing row → returned without modification (no inflow/outflow re-insert, no `IntegrityError` on `TransactionDAO.txid`'s `unique=True`). The new `BlockDAO` is committed with `transactions = [existing_T_cb_dao]`, which appends a **new** `block_transactions` m2m row associating B_adv with T_cb.
+5. Chain state after persistence: T_cb is m2m'd with both B_orig (on the chain) and B_adv (the new tip). Both blocks are in the longest chain.
+
+**Outcome:** ACCEPTED at step 4 — B_adv is persisted with T_cb as its coinbase, and a duplicate m2m row associates T_cb with B_adv.
+
+**Consequence — longest-chain balance inflation for M_orig.** `BlockDAO.longest_chain_transactions_q` (`src/cancelchain/models.py:415-428`) joins `TransactionDAO` to `LongestChainBlockDAO`-filtered blocks via the m2m. T_cb is associated with **two** longest-chain blocks (B_orig and B_adv), so the join produces two `TransactionDAO` rows for T_cb. `longest_chain_outflows_q` (line 431-446) joins this 2-row T_cb subquery with `OutflowDAO`, producing **two rows of T_cb's REWARD outflow**. `ChainDAO.wallet_balance` (`src/cancelchain/models.py:558-567`) sums `OutflowDAO.amount` over a subquery that includes both rows — the M_orig wallet's reported balance is inflated by one extra REWARD per coinbase-replay. The InflowDAO `unique=True` on `(txid, idx)` still prevents M_orig from constructing two distinct spending inflows of the same (T_cb.txid, 0) — so the inflated balance is not directly spendable — but the chain's accounting query layer reports the wrong number.
+
+The schema layer permits this surface because (i) `Block.regular_txns` identifies the coinbase positionally (last txn) rather than by an authoritative "is this txn a coinbase?" flag, and (ii) `Chain.validate_block_coinbase` enforces only the REWARD amount and S/G/M shape — never that the coinbase txid is fresh / not previously persisted on this chain. A `Chain.get_transaction(cb.txid, start_block=block)` check in `validate_block_coinbase` (analogous to the inflow-uniqueness check in `validate_txn_inflow`) would close the gap.
+
+**Finding A4.c — Severity Medium:** A MILLER-role adversary can mine a block whose coinbase is a verbatim replay of any prior block's coinbase transaction. `Chain.validate_block_coinbase` (`src/cancelchain/chain.py:278-285`) enforces only the canonical REWARD amount and the schadenfreude/grace/mudita shape match against `block.regular_txns`; no check rejects a coinbase whose `txid` is already persisted in the chain's lineage. Because `Transaction.to_dao()` returns the existing `TransactionDAO` row for any already-persisted txid (`src/cancelchain/transaction.py:257`), the second persistence path appends a new `block_transactions` m2m row associating the replayed coinbase with the adversary's new block. The original coinbase recipient (M_orig) now has T_cb m2m'd with two longest-chain blocks; `BlockDAO.longest_chain_transactions_q`'s join produces two rows for T_cb, propagating into `longest_chain_outflows_q` and `ChainDAO.wallet_balance`'s sum — M_orig's reported balance inflates by one REWARD per replay. The inflated balance is not directly spendable (the `InflowDAO` `UniqueConstraint('txid', 'idx')` at `src/cancelchain/models.py:208` prevents the same outflow from being consumed twice), but the chain's accounting-query layer reports values that violate the no-double-counting invariant a UTXO model is meant to guarantee. The attack provides no direct value to the adversary (the inflated balance belongs to the original miller), but it remains a chain-integrity violation — and a malicious miller could collude with M_orig (or be M_orig themselves) to inflate M_orig's apparent balance without honest matching reward.
+
+**Remediation sketch:** In `Chain.validate_block_coinbase` (`src/cancelchain/chain.py:278`), before/after the existing reward check, look up `self.get_transaction(cb.txid, start_block=block)`; if the lookup returns non-None (and the matched txn isn't this candidate block's own coinbase — i.e., its m2m doesn't include `block`), raise a new exception (e.g. `DuplicateCoinbaseError(InvalidCoinbaseError)` in `src/cancelchain/exceptions.py`). The same scope check that defends inflow uniqueness (`get_inflows_count`) naturally extends to coinbase-txid uniqueness; both walk the candidate's lineage rather than the global `TransactionDAO`, preserving fork-replay legitimacy (Attack b) while rejecting same-chain coinbase replay. An equally good alternative is to require the coinbase's `address` to equal a freshly-derived "this miller's wallet" address — but cancelchain has no protocol-layer notion of "the miller", so the txid-uniqueness check is the more conservative fix.
+
+**Demonstration test:** `test_a4_c_ii_coinbase_replay_inflates_balance` in `tests/test_verification_audit.py`.
+
+#### Attack d: Reorg double-spend across chains
+
+**Pre-state:** Chain X is currently longest; block_X1 (extending the shared ancestor block_0) contains regular transaction T1 with `Inflow(outflow_txid=T_prior.txid, outflow_idx=0)` consuming outflow O (a coinbase outflow on block_0 paying the adversary's wallet W_adv). T1's outflow pays address B (a third-party recipient, e.g. a merchant who provided off-chain goods in exchange for T1's payment). The adversary secretly builds a competing chain Y also extending block_0; on Y they craft T2, a **different-txid** transaction whose inflow also consumes (T_prior.txid, 0) but whose outflow pays W_adv themselves (so the adversary recovers the funds while keeping B's off-chain goods). Y accumulates more PoW than X.
+
+**Attack:** Adversary mines Y to the point that `Y.length > X.length`, gossips Y's blocks to honest peers. Each Y block is validated as it arrives.
+
+**Trace:**
+1. As each Y-extending block arrives via `BlockView.post` → `Node.receive_block` → `Chain.add_block` → `Chain.validate_block`. Block-layer and chain-context checks (timestamp / target / merkle / coinbase) all pass — Y was honestly mined.
+2. The Y block containing T2 reaches `Chain.validate_block_txn(block_Y_n, T2)` → `validate_txn_inflow(block_Y_n, T2, T2.inflows[0])` (`src/cancelchain/chain.py:243`):
+   - Line 254: `get_transaction(T_prior.txid, start_block=block_Y_n)` walks block_Y_n's ancestry via `Block.from_db(prev_hash)` (`src/cancelchain/chain.py:298-310`). T_prior is on the shared ancestor block_0 — found. Pass.
+   - Line 263-269: address match — O's owner is W_adv; T2.address is W_adv. Pass.
+   - Line 271-273: `get_inflows_count(block_Y_n, T_prior.txid, 0)`. The walk uses `Block.from_db(prev_hash)` traversal + `BlockDAO.inflows_in_chain_count` (`src/cancelchain/models.py:362-371`), which scopes its join to block_Y_n's per-block recursive CTE `_block_chain`. T1 (on chain X) is **not** in Y's lineage. The CTE walks from block_Y_n.prev → ... → block_0; T1's inflow row exists in `InflowDAO` but its owning transaction T1 is only m2m'd with chain X's blocks, so the join produces zero matches. `num_inflows == 0`. Pass.
+3. Y's blocks finish applying. `ChainDAO.longest()` selects Y (`ChainDAO.chains` orders by `BlockDAO.idx.desc()` — `src/cancelchain/models.py:820-828`). `LongestChainBlockDAO` is rebuilt to reflect Y's lineage (`Phase 6` materialization).
+4. Post-reorg `wallet_balance(B)`: queries `longest_chain_outflows_q`, which joins via `LongestChainBlockDAO`-filtered blocks. B's T1-outflow exists in `OutflowDAO` but T1 is only m2m'd with block_X1 (not in longest). Join produces zero rows for B's T1-outflow. **B's balance reads zero — no funds received** (which is honest: T1 isn't on the canonical chain).
+5. Post-reorg `wallet_balance(W_adv)`: T2 is m2m'd with a Y block (in longest). T2's outflow to W_adv shows as unspent. W_adv's balance includes the recovered value.
+
+**Outcome:** ACCEPTED — Y is now the longest chain, T2 is canonical, T1 is on a stale fork. The adversary spent O to themselves via T2; B's expectation of T1's payment is reverted by reorg.
+
+**Result:** The validation pipeline behaves correctly per its design: each chain is independently consistent under per-chain UTXO rules, and the canonical-chain selection picks the longer-PoW tip. Value conservation **per chain** holds — chain X observes T1 consuming O and outputting to B; chain Y observes T2 consuming O and outputting to W_adv; both internally balance. The cross-chain "double-spend" is not a validation failure but the canonical Proof-of-Work assumption: any chain with sufficient majority hashrate over a sufficient depth can rewrite history. Bitcoin handles this with the "wait for N confirmations" mitigation pattern (off-chain, applied by recipients), not via a protocol-level rule rejecting reorgs that overwrite spent outputs. Cancelchain inherits the same property; no validation-pipeline rule could reject Y without breaking the PoW fork-resolution invariant.
+
+The chain-scoping invariant (per-block recursive CTE on `prev_id`) is what defends value conservation within any single chain — `get_inflows_count` correctly counts T1's inflow against X's lineage and T2's against Y's, never confusing them. The cross-chain conflict surfaces only after the consensus layer (longest-chain selection) has chosen one fork; from that point on, only the canonical chain's UTXO state is queried.
+
+**No finding.** The reorg double-spend is a PoW economic-security property, not a validation-pipeline gap. Mitigation lives off-chain (recipient confirmation-depth policy), not in the validator. The audit's recommendation set will note this as a documented limitation that warrants explicit confirmation-depth guidance in operator documentation — but no validation-pipeline remediation is possible without changing the consensus model.
 
 ### Adversary 5: Reorg attacker
 
