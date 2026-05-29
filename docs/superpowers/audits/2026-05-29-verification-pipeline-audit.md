@@ -342,7 +342,158 @@ Block-layer `Block.validate_coinbase` (`src/cancelchain/block.py:274`) checks co
 
 ### Adversary 3: Malicious miller (MILLER role)
 
-[Placeholder — filled in by Task 5.]
+**Capabilities:** Solves and submits blocks. Authenticated as MILLER. Controls the coinbase address. Can choose which pending transactions to include. Can manipulate block timestamps and `proof_of_work`.
+
+**Validation pipeline summary.** Adversary 3 enters at `BlockView.post` (`src/cancelchain/api.py:308`, gated to MILLER role via `miller_block_view` at `src/cancelchain/api.py:342,354,360`), which calls `Node.receive_block` (`src/cancelchain/node.py:140`). The receive path runs (in order): `Block.from_json` (schema via `BlockModel.model_validate_json` — `src/cancelchain/block.py:354`) → URL `block_hash` ↔ body `block_hash` check (line 153) → duplicate-suppression via `Block.from_db` (line 155) → `block.validate()` (`src/cancelchain/block.py:289`, the full Block-layer aggregator: schema re-check, `validate_block_hash`, `validate_merkle_root`, per-txn `validate_transaction`, `validate_coinbase` shape) → parent-presence check raising `MissingBlockError` (lines 158-164) → `Node.process_block` → `Node.add_block` → `Chain.add_block` → `Chain.validate_block` (`src/cancelchain/chain.py:170`).
+
+`Chain.validate_block`'s first action is `block.validate()` (line 171); it then layers chain-context checks: `FutureBlockError` (line 172-173), `InvalidPreviousHashError` (line 175-176, 185-186), `OutOfOrderBlockError` (line 177-183), `InvalidBlockIndexError` (line 192-193), `InvalidTargetError` (line 194-195), per-regular-txn `validate_block_txn` (line 196-197, runs the UTXO conservation rules — `MissingInflowOutflowError` / `InflowOutflowAddressMismatchError` / `SpentTransactionError` / `ImbalancedTransactionError`), and `validate_block_coinbase` (line 198), which catches the one Block-layer-omitted coinbase invariant: `outflows[0].amount != REWARD` raises `InvalidCoinbaseErrorRewardError` (`src/cancelchain/chain.py:283-285`).
+
+Crucially for this adversary: `Miller.create_block` (`src/cancelchain/miller.py:82`) is **internal-honest-miller optimization** — it pre-validates pending txns via `Chain.validate_block_txn` and drops failures so an honest miller doesn't waste PoW. A malicious miller bypasses it entirely by hand-crafting a `Block(...)` instance and POSTing the milled result to `/api/block/<hash>`. Only the receive-path validation defends the chain; the traces below evaluate that path against each attack.
+
+#### Attack a: Include an invalid transaction in their block
+
+**Pre-state:** Local chain at height ≥ 1. Adversary holds the MILLER role and a coinbase-funded wallet on the chain. Adversary constructs a "regular" transaction T_bad that fails one of the chain-rule checks: e.g., an inflow referencing a non-existent outflow (`MissingInflowOutflowError`), an inflow whose owning address differs from `txn.address` (`InflowOutflowAddressMismatchError`), an inflow referencing an outflow already consumed in the chain (`SpentTransactionError`), or unbalanced inflows/outflows (`ImbalancedTransactionError`). The schema and signature on T_bad are correct (adversary signs with their own wallet); only chain-context rules fail.
+
+**Attack:** Adversary builds a `Block` directly — not via `Miller.create_block`, which would have caught T_bad at line 91 and dropped it — adds T_bad via `block.add_txn(t_bad)` (which calls `Block.validate_transaction` at `src/cancelchain/block.py:259`, exercising only the Block-layer per-txn checks: schema, signature, txid, timestamp window, order). Adversary then links to the local chain tip, seals (`block.seal(wallet, REWARD)` adds a correct coinbase, computes merkle root, sets timestamp), and mills until PoW is found. POST the milled block to `/api/block/<block_hash>`.
+
+**Trace:**
+1. `src/cancelchain/api.py:321` — `BlockView.post` calls `node.receive_block(request.data, block_hash=block_hash, ...)`.
+2. `src/cancelchain/node.py:150` — `Block.from_json` runs `BlockModel.model_validate_json`. Pass (block is structurally well-formed and adversary's PoW is real).
+3. `src/cancelchain/node.py:153-154` — URL hash matches body hash.
+4. `src/cancelchain/node.py:155` — block not in `BlockDAO`.
+5. `src/cancelchain/node.py:157` — `block.validate()` runs schema re-check + `validate_block_hash` + `validate_merkle_root` + per-regular-txn `validate_transaction` (Block-layer only: T_bad's signature and txid are correct, so this passes) + `validate_coinbase` (the adversary's coinbase shape matches block-level S/G/M totals). Pass.
+6. `src/cancelchain/node.py:158-164` — parent block resolves; not genesis. Pass.
+7. `src/cancelchain/node.py:166` — `process_block` → `add_block` → `Chain.add_block` (`src/cancelchain/chain.py:153`) → `Chain.validate_block` (line 170).
+8. `Chain.validate_block` calls `block.validate()` again (line 171, pass), then chain-context checks. At line 196-197: `for txn in block.regular_txns: self.validate_block_txn(block, txn)`.
+9. `Chain.validate_block_txn` (line 200) invokes `validate_txn_inflow` (line 243), which raises the appropriate exception per the inflow variant:
+   - **a.i (no such outflow):** `get_transaction(i.outflow_txid, start_block=block)` returns None → **`MissingInflowOutflowError`** at line 257-258.
+   - **a.ii (address mismatch):** address resolution at lines 263-267 returns the legitimate owner; `address != txn.address` → **`InflowOutflowAddressMismatchError`** at line 269.
+   - **a.iii (double-spend against the persisted chain):** `get_inflows_count` returns ≥ 1 → **`SpentTransactionError`** at line 274.
+   - **a.iv (imbalanced):** after `validate_txn_inflow` resolves all inflows, line 237 raises **`ImbalancedTransactionError`** when `other_amounts != 0`, or line 240 when a per-subject bucket fails to balance.
+10. `Chain.validate_block` propagates `InvalidBlockError` (wrapping the per-txn error) before `block.to_db()` runs — `Chain.add_block` line 154 calls `validate_block` first, line 155 only persists on success.
+
+**Outcome:** REJECTED at step 9 via the appropriate `InvalidTransactionError` subclass (wrapped as `InvalidBlockError({f'Transaction {txid}': ...})` at `src/cancelchain/block.py:300-301`). No block-side-effect: persistence at `Chain.add_block` line 155 runs only after `validate_block` returns successfully (the same validate-then-persist ordering surfaced by A2.f).
+
+**Result:** Validation correctly rejects. The Miller-internal `create_block` pre-validation (`src/cancelchain/miller.py:91`) is purely an honest-miller PoW-economy optimization; the receive path's `Chain.validate_block_txn` invocation enforces the same rules against every block regardless of who signed it. Regression-covered by `tests/test_chain.py::test_validate_block_txn` (line 416, `ImbalancedTransactionError` at line 454) and `tests/test_chain.py::test_validate_txn_inflow` (line 458, all three inflow variants). No finding.
+
+#### Attack b: Claim excess coinbase reward (output > REWARD)
+
+**Pre-state:** Local chain at height ≥ 1 with a known `REWARD = 100 * CURMUDGEON_PER_GRUMBLE = 10000` (`src/cancelchain/chain.py:42`). Adversary intends to mint more than the protocol-defined block reward to their own address.
+
+**Attack:** Adversary bypasses `Block.seal`/`Block.add_coinbase` (which call `Transaction.coinbase(wallet, reward=REWARD, ...)` — a wrapper that hard-codes the canonical reward at `src/cancelchain/block.py:208-211`) and instead hand-builds the coinbase transaction directly: a `Transaction` with no inflows and one outflow `Outflow(amount=REWARD + N, address=adversary_address)` (or two outflows: `[Outflow(amount=REWARD, address=adv), Outflow(amount=N, address=adv)]` to try to pass `outflows[0].amount == REWARD` while still inflating the total). The coinbase is sealed, signed, and added to the block via `block.add_txn(cb, is_coinbase=True)` (which only invokes `cb.validate_coinbase()` — schema-only; see `src/cancelchain/block.py:202-206`). Adversary then sets `merkle_root`, `timestamp`, mills until PoW lands, and POSTs.
+
+**Trace:**
+1. `src/cancelchain/node.py:150-157` — schema + `block.validate()` runs `validate_coinbase` (`src/cancelchain/block.py:274-287`). This checks coinbase **shape**, not the reward amount: line 286-287 compares `cb.outflows[1:].amount` against the block-level S/G/M totals (`comps`). For the **outflow[0]-inflated** variant (`outflows = [Outflow(REWARD + N, adv)]`, no S/G/M), `comps = []` and `outflows[1:] = []` — they match; pass. For the **multi-outflow** variant (`outflows = [REWARD, N]`, S/G/M = 0), `comps = []` and `outflows[1:] = [N]` — mismatch → **`InvalidCoinbaseError`** raised at line 287, wrapped as `InvalidBlockError` (regression-covered by `tests/test_chain.py::test_validate_block_coinbase` at line 573).
+2. For the **outflow[0]-inflated** variant that survives step 1: `Node.process_block` → `Chain.add_block` → `Chain.validate_block` → `validate_block_coinbase` at `src/cancelchain/chain.py:278-285`:
+   ```
+   def validate_block_coinbase(self, block: Block) -> None:
+       block.validate_coinbase()
+       reward = self.block_reward(block)
+       cb = block.coinbase
+       if cb is not None:
+           outflow = cb.get_outflow(0)
+           if outflow is not None and outflow.amount != reward:
+               raise InvalidCoinbaseErrorRewardError()
+   ```
+   `outflow.amount = REWARD + N != REWARD` → **`InvalidCoinbaseErrorRewardError`** (subclass of `InvalidCoinbaseError`, subclass of `InvalidTransactionError`). Regression-covered by `tests/test_chain.py::test_validate_block_coinbase` at line 546.
+3. The schema layer also constrains the attack surface: `CoinbaseTransactionModel` (`src/cancelchain/transaction.py:107-109`) declares `inflows: min_length=0, max_length=0` (so no inflows can be smuggled into the coinbase) and `outflows: min_length=1, max_length=4` (capping the outflow count at REWARD + S + G + M). `OutflowModel` (`src/cancelchain/payload.py:68-89`) requires `amount >= 1` and exactly one destination flag; the adversary cannot route a single outflow's amount across multiple destinations to confuse `outflows[0]`.
+
+**Outcome:** REJECTED at step 1 (`InvalidCoinbaseError`) for any multi-outflow inflation variant, or at step 2 (`InvalidCoinbaseErrorRewardError`) for the `outflows[0].amount > REWARD` variant.
+
+**Result:** Validation correctly rejects. The Block-layer check (`Block.validate_coinbase`) enforces the structural mapping between the block's regular-txn S/G/M totals and the coinbase outflows[1:]; the Chain-layer check (`Chain.validate_block_coinbase`) closes the one remaining gap — the canonical REWARD amount on `outflows[0]`. Both run on the receive path. No finding.
+
+#### Attack c: Censor specific subjects (refuse to include txns matching a pattern)
+
+**Pre-state:** Adversary holds the MILLER role. Pending pool contains transactions whose `outflows[0].subject` (or `forgive`/`support`) matches some pattern the adversary wishes to suppress — e.g., support for a particular subject, or forgive-txns targeting a subject the adversary opposes.
+
+**Attack:** Adversary's `Miller.pending_chain_txns` iteration (`src/cancelchain/miller.py:68-80`) selects only txns the adversary chooses, skipping pattern-matched ones. The selection logic is entirely under the adversary's control; the resulting block contains a strict subset of the legitimately-mineable pending transactions.
+
+**Trace:** The receive-path validation surface (`Block.validate`, `Chain.validate_block`, `Chain.validate_block_txn`, `Chain.validate_block_coinbase`) examines only the transactions present **in the submitted block** plus their relationship to the persisted chain. No method inspects which pending transactions were available at the time of block construction; no method compares the included-transaction set to the pending pool. `Chain.block_target` (`src/cancelchain/chain.py:109`) and `Chain.block_reward` (line 140) are functions of chain height alone — neither penalizes a miller for sparse blocks. `Block.validate_transactions` does not require any minimum diversity, fairness, or anti-censorship inclusion property; the only minimum on `txns` is the schema's `min_length=1` (`src/cancelchain/block.py:84`), which is satisfied by the coinbase alone.
+
+**Outcome:** ACCEPTED — the censoring block is structurally valid and persists to the chain. But this is **by design**: censorship resistance is not an invariant the cancelchain protocol enforces.
+
+**Result:** **No finding by design.** Inclusion fairness is fundamentally incompatible with permissionless miner choice — a miner must be free to construct blocks from whichever subset of the pending pool they wish, including the empty subset (coinbase-only). Any mechanism that forced inclusion (e.g., "must include all eligible pending txns of age ≥ N") would require ordering across the entire network's pending pool (no peer agrees on the same pool), penalize honest miners whose `pending_txns_gen` poll missed a txn by milliseconds, and create denial-of-service vectors against miller bandwidth. Censorship resistance in PoW chains is an economic property, not a structural one: a censored transaction is mineable by any honest miner; persistent censorship requires a sustained majority-hashrate adversary, which is the 51% problem and out of scope for this audit. No remediation possible at the validation-pipeline layer.
+
+#### Attack d: Embed contradictory inflows/outflows in their block (intra-block double-spend)
+
+**Pre-state:** Local chain at height ≥ 1. Adversary holds an unspent outflow O at index `idx` of mined transaction T_prior with amount A. They craft two distinct regular transactions T_x and T_y, each carrying `Inflow(outflow_txid=T_prior.txid, outflow_idx=idx)` and each spending A to different destinations (so the txids differ). Both are correctly signed and self-consistent.
+
+**Attack:** Adversary builds a block containing **both** T_x and T_y as regular transactions (plus a correct coinbase). Seals, mills, POSTs.
+
+**Trace:**
+1. `src/cancelchain/node.py:150-157` — schema and Block-layer per-txn checks pass: T_x and T_y are independently well-formed, signed, and txid-consistent. `validate_merkle_root` matches.
+2. `Chain.add_block` → `Chain.validate_block` → line 196-197: `for txn in block.regular_txns: self.validate_block_txn(block, txn)`.
+3. For T_x (first in `block.regular_txns`): `validate_block_txn` calls `validate_txn_inflow(block, T_x, T_x.inflow_0)` (`src/cancelchain/chain.py:243`). Inside, `get_inflows_count(block, T_prior.txid, idx)` (line 271-273) walks `block.txns` (`src/cancelchain/chain.py:319-327`): the in-memory walk iterates every transaction's every inflow. **The block being validated is not yet in `BlockDAO`** (`Chain.add_block` line 154 runs `validate_block` before `block.to_db()` at line 155), so the `while block is not None and BlockDAO.get(block.block_hash) is None` loop visits this block's txns first. The walk counts T_x's inflow (i=1) AND T_y's inflow (i=2) against `(T_prior.txid, idx)`. Result: `num_inflows = 2`.
+4. `src/cancelchain/chain.py:274` — `if num_inflows > 1 or (num_inflows > 0 and not txn_in_block): raise SpentTransactionError()`. `num_inflows > 1` is True → **`SpentTransactionError`** (wrapped as `InvalidBlockError({f'Transaction {T_x.txid}': ...})` at `src/cancelchain/block.py:300-301` — actually at `Chain.validate_block`'s call site; the wrap happens implicitly when `InvalidTransactionError` propagates out of `validate_block_txn`).
+5. The single-transaction variant — T_x has TWO inflows both referencing `(T_prior.txid, idx)` — is caught the same way: `get_inflows_count` returns 2 from T_x's own inflows, and step 4 raises `SpentTransactionError`. Regression-covered by `tests/test_chain.py::test_validate_txn_inflow` line 519-520 for the cross-block spent case; the intra-block walk is the natural extension of the same code path.
+
+**Outcome:** REJECTED at step 4 via `SpentTransactionError`. The in-memory `block.txns` walk at `src/cancelchain/chain.py:319-327` is what defends the intra-block double-spend case; without it, the persisted-chain check at line 332 would miss the duplicate because neither T_x nor T_y has been written to `BlockDAO` yet.
+
+**Result:** Validation correctly rejects. The structural property — that `get_inflows_count` examines the candidate block's in-memory txns before descending to the persisted chain — is what closes the intra-block double-spend gap. No finding.
+
+#### Attack e: Manipulate timestamps to push the difficulty target up or down beyond the ±4× clamp
+
+**Pre-state:** Local chain at height h ≥ 1, near a difficulty-retarget boundary (i.e., next block's idx is divisible by `TARGET_INTERVAL = 2016`). Adversary intends to mine the retarget-boundary block with a manipulated timestamp so the resulting target is easier than the protocol intends.
+
+**Attack:** Adversary considers two manipulation axes: (i) set the new block's own `timestamp` to inflate the time-elapsed signal feeding `block_target`'s retarget formula; (ii) submit a block whose `target` field claims an easier-than-canonical value, hoping the chain accepts it.
+
+**Trace:**
+1. `src/cancelchain/node.py:150` — schema `BlockModel` runs `validate_difficulty` (`src/cancelchain/block.py:88-92`): `int(block_hash, 16) < int(target, 16)`. Pass — adversary's mined `block_hash` is below the (potentially fake-easy) `target`.
+2. `src/cancelchain/node.py:157` — `block.validate()` re-runs schema and `validate_block_hash` / `validate_merkle_root` / per-txn checks. Pass (block is internally consistent).
+3. `Chain.validate_block` (`src/cancelchain/chain.py:170`):
+   - Line 172-173: `FutureBlockError` if `block.timestamp_dt > now()`. Caps forward timestamp manipulation at wall-clock-now.
+   - Line 177-183: `OutOfOrderBlockError` if `block.timestamp_dt < prev_block.timestamp_dt`. Forbids backward manipulation past the previous block.
+   - **Line 194-195: `if block.target != self.block_target(block=block): raise InvalidTargetError()`.** The chain recomputes the canonical target via `Chain.block_target(block=block)` (`src/cancelchain/chain.py:109-138`) and rejects any divergent claim. Variant (ii) — a fabricated easier target — is REJECTED here.
+4. For variant (i) — manipulating the new block's `timestamp` to influence the retarget at the NEXT epoch boundary (since the current-block target is computed from PRIOR blocks' timestamps, immutable at this point) — the adversary's only knob is the timestamp of the block they're currently mining. That timestamp will become the `prev_block.timestamp_dt` consumed by the next epoch boundary's retarget. But:
+   - The clamp at `src/cancelchain/chain.py:131-132` (`factor = min(max(factor, 0.25), 4.0)`) bounds the retarget multiplier at ±4× per `TARGET_INTERVAL = 2016` blocks **regardless** of how extreme `interval_delta` is.
+   - The forward bound (`FutureBlockError`, ≤ now()) caps the inflated-elapsed-time signal at the wall clock; the adversary can't claim more time than has actually passed.
+   - The backward bound (`OutOfOrderBlockError`, ≥ prev) prevents shrinking `interval_delta` below zero.
+   - The result clamp at `src/cancelchain/chain.py:134-135` further caps `new_target ≤ MAX_TARGET`, so the retarget cannot make difficulty trivially easy even if the factor saturates.
+
+**Outcome:** REJECTED at step 3 via `InvalidTargetError` for the fabricated-target variant. For the timestamp-manipulation variant, the ±4× clamp + `FutureBlockError` + `OutOfOrderBlockError` + `MAX_TARGET` cap together bound the manipulation strictly within the protocol-defined window — the adversary cannot push past the clamp by construction.
+
+**Result:** The structural clamp on `factor` (`src/cancelchain/chain.py:131-132`) is itself the defense; the adversary cannot break a deterministic clamp computed by the validator. The audit's specific question — "push the difficulty target up or down beyond the ±4× clamp" — has no mechanism within the validation pipeline that would permit it. The wider question of "should the ±4× clamp be tighter?" (Bitcoin Core's `nPowTargetSpacing` and median-time-past rules predate this for a reason) is a protocol-design question outside this audit's scope. No finding.
+
+#### Attack f: Submit a block with a valid proof_of_work but an invalid merkle root
+
+**Pre-state:** Local chain at height ≥ 1. Adversary mines a block honestly (real PoW, real txns) but, before POSTing, mutates the `merkle_root` field to a value that does **not** match the merkle root of the included `txns` — hoping the receive path accepts the block while disagreeing about which transactions it commits to.
+
+**Attack:** Variant f.i (header doesn't match body): mine with `merkle_root = X`, then mutate the in-memory block to `merkle_root = Y` (Y ≠ X) and submit. Variant f.ii (mutate txns after mining): mine with txns = [A, B, C] and `merkle_root = merkle(A, B, C)`, then swap to txns = [A, B, D] before submission while keeping the original `merkle_root`.
+
+**Trace:**
+1. `src/cancelchain/node.py:150` — `Block.from_json` runs `BlockModel.model_validate_json` (`src/cancelchain/block.py:354-361`). `BlockModel.validate_difficulty` (line 88-92) checks `int(block_hash, 16) < int(target, 16)`. Pass — `block_hash` is a real-mined value below target.
+2. `src/cancelchain/node.py:157` — `block.validate()` (`src/cancelchain/block.py:289-306`) runs:
+   - `BlockModel.model_validate` (re-check). Pass.
+   - **`self.validate_block_hash()` (line 251-253):** `block_hash != get_header_hash()`. The `unproven_header` (line 146-157) concatenates `idx,timestamp,prev_hash,target,merkle_root,version,proof_of_work` — `merkle_root` is part of the PoW preimage. Variant f.i: adversary mined with `merkle_root=X` so `block_hash = mill_hash(header_with_X)`, but submitted `merkle_root=Y`. `get_header_hash()` recomputes from the submitted `merkle_root=Y` → mismatch → **`InvalidBlockHashError`**.
+   - **`self.validate_merkle_root()` (line 255-257):** `merkle_root != get_merkle_root()`. `get_merkle_root()` rebuilds the merkle tree from the submitted `txns` list (line 173-178). Variant f.ii: adversary's submitted `merkle_root` commits to [A, B, C] but `block.txns = [A, B, D]` — recompute over [A, B, D] yields a different root → **`InvalidMerkleRootError`** (subclass of `InvalidBlockError`).
+   - Variant f.i also hits `InvalidMerkleRootError` if Y happens to be a valid but unrelated value: the recompute yields the correct-for-included-txns root, which won't equal Y. The first of `validate_block_hash` / `validate_merkle_root` to fire wins (they run sequentially at lines 294-295).
+3. Even if an adversary somehow constructed a block that survived both block-hash and merkle-root checks, the schema's `validate_difficulty` already requires `block_hash < target` against the **submitted** `block_hash`, so the submitted hash can't be replaced with an unmined fabrication without losing the PoW.
+
+**Outcome:** REJECTED at step 2 via `InvalidBlockHashError` (variant f.i; the header doesn't commit to the submitted merkle_root) and/or `InvalidMerkleRootError` (variant f.ii; the merkle_root doesn't commit to the submitted txns). The two checks are independently sufficient; the structural property is that PoW commits to merkle_root and merkle_root commits to txns, so any tampering at either layer is detectable by re-computation.
+
+**Result:** Validation correctly rejects. The header-hash-commits-to-merkle-root invariant is enforced by `validate_block_hash`; the merkle-root-commits-to-txns invariant is enforced by `validate_merkle_root`. Both are invoked on the receive path before any persistence. Regression-covered by `tests/test_block.py::test_invalid_transaction` lines 122-123 (`InvalidBlockError, match='block_hash'`) and lines 136-141 (`InvalidBlockError, match='merkle_root'`). No finding.
+
+#### Attack g: Submit a block at the wrong difficulty for the current chain height
+
+**Pre-state:** Local chain at height h ≥ 1. Adversary intends to submit a block whose `target` field claims a value other than the canonical target the chain would compute for the block's claimed `idx`. Variants: (g.i) `target` is the previous block's target but the block is at a retarget boundary where it should have changed; (g.ii) `target` claims `MAX_TARGET` (max-easy) at any idx; (g.iii) `target` claims a value harder than canonical, hoping to displace the canonical chain by pretending more work.
+
+**Attack:** Adversary builds a block with a fabricated `target` field, mines until `block_hash < target` (the schema's `validate_difficulty` check), seals, and POSTs.
+
+**Trace:**
+1. `src/cancelchain/node.py:150` — `BlockModel.validate_difficulty` (`src/cancelchain/block.py:88-92`) only checks the **internal** consistency of the submitted block: `block_hash < target`. It does not compare `target` against the chain's canonical computation. Pass.
+2. `src/cancelchain/node.py:157` — `block.validate()` does not check `target` against the chain either; the Block layer has no chain context to compute the canonical target from. Pass.
+3. `src/cancelchain/node.py:158-164` — parent-presence check. The parent is in `BlockDAO` (adversary chains off the real tip). Pass.
+4. `Chain.add_block` → `Chain.validate_block` (`src/cancelchain/chain.py:170`):
+   - Line 172-173: `FutureBlockError` — not triggered if adversary timestamps honestly.
+   - Line 175-183: prev_block lookup + `OutOfOrderBlockError` — pass.
+   - Line 185-186: `InvalidPreviousHashError` — pass.
+   - Line 192-193: `InvalidBlockIndexError` — pass (adversary claims correct idx, since they want their block to extend the chain).
+   - **Line 194-195: `if block.target != self.block_target(block=block): raise InvalidTargetError()`.** `Chain.block_target(block=block)` recomputes the canonical target for the block's idx using `prev_target` (or the retarget formula at idx % TARGET_INTERVAL == 0). The adversary's fabricated `target` diverges from this canonical value → **`InvalidTargetError`** (subclass of `InvalidBlockError`).
+5. Regression-covered by `tests/test_chain.py::test_block_target` line 184 (`pytest.raises(InvalidTargetError)`).
+
+**Outcome:** REJECTED at step 4 via `InvalidTargetError`. The schema-layer check (`validate_difficulty`) covers the structural PoW invariant (`block_hash < target`); the chain-layer check (`Chain.validate_block` line 194-195) closes the chain-context gap by comparing the claimed target against the deterministic canonical computation.
+
+**Result:** Validation correctly rejects. The split is structurally sound — Block layer cannot compute the canonical target without chain context, so the check lives at the Chain layer; both layers run on the receive path. No finding.
 
 ### Adversary 4: Replay attacker
 
