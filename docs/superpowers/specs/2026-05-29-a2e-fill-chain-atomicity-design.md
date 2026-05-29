@@ -37,13 +37,14 @@ The deferred-commits approach makes the inner persistence calls use `db.session.
 
 ### The change shape
 
-Five method signatures gain an optional `commit: bool = True` parameter (default preserves today's behavior; only `fill_chain` passes `commit=False`):
+Six method signatures gain an optional `commit: bool = True` parameter (default preserves today's behavior; only `fill_chain` passes `commit=False`):
 
-1. `BlockDAO.commit()` in `src/cancelchain/models.py` (line ~793).
+1. `BlockDAO.commit()` in `src/cancelchain/models.py` (line ~335 — inside `class BlockDAO`, the line near `def commit(self)` between the class definition at line 251 and the next class at line 466). Confirm with `grep -n -B 30 'def commit' src/cancelchain/models.py | grep -E 'class |def commit'` to verify which DAO each `def commit` belongs to.
 2. `Block.to_db()` in `src/cancelchain/block.py` (line 342) — forwards to `BlockDAO.commit()`.
 3. `Chain.to_db()` in `src/cancelchain/chain.py` (line 564) — has inline `db.session.commit()` at line 570; replaced with conditional commit.
 4. `Chain.add_block()` in `src/cancelchain/chain.py` (line 153) — forwards to `Block.to_db()`.
-5. `Node.add_block()` in `src/cancelchain/node.py` (line 181) — forwards to `chain.add_block()` and `chain.to_db()`.
+5. `Node.add_block()` in `src/cancelchain/node.py` (line 181) — forwards to `chain.add_block()`, `self.create_chain()`, and `chain.to_db()`.
+6. `Node.create_chain()` in `src/cancelchain/node.py` (line 196) — forwards to `chain.add_block()`. Without this, the `create_chain` fallback inside `Node.add_block` would call `chain.add_block(block)` with the default `commit=True`, committing inside the loop and defeating atomicity whenever a block lands on an ancestor that exists as a `Block` row but isn't currently a `Chain` tip.
 
 Then `Node.fill_chain` calls `self.add_block(block, commit=False)` inside its apply loop, and commits once at the end:
 
@@ -89,31 +90,33 @@ When `commit=False`, the row is added to the autobegun root transaction and flus
 
 ### Why deferring `new_block_signal` matters
 
-Today `new_block_signal` has no registered listeners (the only `.send` callsites are `Node.receive_block:177` and `Node.fill_chain:350`; no `.connect` callsites exist). But emitting signals inside the apply loop, then rolling back, creates a brief observable inconsistency for any future consumer: the signal fires for a block that isn't (or won't be) in the chain. Moving the emission to after the explicit `db.session.commit()` ensures signals only fire for blocks that actually committed, in apply order. Cost: one extra list traversal, length ≤ the apply loop's iteration count.
+Today `new_block_signal` has no registered listeners. The only `.send` callsites are `Node.process_block:177` (single-block path: `receive_block` → `process_block` → `add_block` → emit) and `Node.fill_chain:350`; no `.connect` callsites exist. But emitting signals inside the apply loop, then rolling back, creates a brief observable inconsistency for any future consumer: the signal fires for a block that isn't (or won't be) in the chain. Moving the emission to after the explicit `db.session.commit()` ensures signals only fire for blocks that actually committed, in apply order. Cost: one extra list traversal, length ≤ the apply loop's iteration count.
 
 ### Callers of `fill_chain` (unchanged)
 
 Only two: `Miller.poll_latest_blocks` (`miller.py:108`, called when polling peers for a longer chain) and `cancelchain sync` (`command.py:379`). Both treat `fill_chain`'s return value as a boolean for retry logic. Neither passes `commit=False` to anything — they use the default `commit=True` behavior in their other DB operations. No caller-side changes needed.
 
-### Other callers of `Block.to_db()` / `Chain.to_db()` / `Chain.add_block()` / `Node.add_block()`
+### Other callers of `Block.to_db()` / `Chain.to_db()` / `Chain.add_block()` / `Node.add_block()` / `Node.create_chain()`
 
-All existing callers omit the new parameter, getting the default `commit=True` behavior. The parameter is keyword-only (`*, commit: bool = True`) to prevent accidental positional misuse. No call site outside `fill_chain` needs to change.
+All existing callers omit the new parameter, getting the default `commit=True` behavior. The parameter is keyword-only (`*, commit: bool = True`) to prevent accidental positional misuse. No call site outside `fill_chain` (transitively) needs to change.
 
-Confirmed by grep:
+Confirmed by grep against current `main`:
 
 - `Block.to_db()` callers: `Chain.add_block` (chain.py:155, the only caller — `fill_chain` reaches it transitively via `Node.add_block`).
 - `Chain.to_db()` callers: `Node.add_block` (node.py:188, the only caller — same path).
-- `Chain.add_block()` callers: `Chain.create_chain` (chain.py — via Node.create_chain), `Node.add_block` (chain.add_block call), tests/test_chain.py (regression coverage).
-- `Node.add_block()` callers: `Node.receive_block` (node.py:176, single-block path — uses default commit=True), `Node.fill_chain` (node.py:349, this PR's case — switches to commit=False).
+- `Chain.add_block()` callers: `Node.create_chain` (node.py:200, via the create-chain fallback in `Node.add_block`), `Node.add_block` itself (node.py:185, the direct chain.add_block call), tests in `tests/test_chain.py` (regression coverage that defaults to commit=True).
+- `Node.add_block()` callers: `Node.process_block` (node.py:176, single-block path — uses default commit=True), `Node.fill_chain` (node.py:349, this PR's case — switches to commit=False), `cancelchain validate`/sync CLI (`command.py:484`, uses default commit=True).
+- `Node.create_chain()` callers: `Node.add_block` itself (node.py:187, the fallback path).
+- `Node.process_block()` callers: `Node.receive_block` (node.py — the entry-point delegate; not directly affected by the refactor).
 
 ## Changes
 
 ### Files (in scope)
 
-- **Modify:** `src/cancelchain/models.py` — `BlockDAO.commit()` gains a keyword-only `commit: bool = True` parameter. When `False`, replaces `db.session.commit()` with `db.session.flush()`. ~5 lines changed.
-- **Modify:** `src/cancelchain/block.py` — `Block.to_db()` gains a keyword-only `commit: bool = True` parameter; forwards to `BlockDAO.commit()`. ~3 lines changed.
-- **Modify:** `src/cancelchain/chain.py` — `Chain.to_db()` gains a keyword-only `commit: bool = True` parameter; the inline `db.session.commit()` at line 570 becomes conditional. `Chain.add_block()` gains the same parameter; forwards to `Block.to_db()`. ~6 lines changed.
-- **Modify:** `src/cancelchain/node.py` — `Node.add_block()` gains a keyword-only `commit: bool = True` parameter; forwards to `chain.add_block()` and `chain.to_db()`. `Node.fill_chain` apply loop refactored to call `self.add_block(block, commit=False)`, accumulate `applied` list, commit once at the end / rollback on exception, defer `new_block_signal.send` calls to after the commit. ~18 lines changed.
+- **Modify:** `src/cancelchain/models.py` — `BlockDAO.commit()` (line ~335, inside `class BlockDAO` between line 251 and 466) gains a keyword-only `commit: bool = True` parameter. When `False`, replaces `db.session.commit()` with `db.session.flush()`. ~5 lines changed. Other DAOs (TransactionDAO at line 97, ChainDAO at line 793, etc.) are NOT modified.
+- **Modify:** `src/cancelchain/block.py` — `Block.to_db()` (line 342) gains a keyword-only `commit: bool = True` parameter; forwards to `BlockDAO.commit()`. ~3 lines changed.
+- **Modify:** `src/cancelchain/chain.py` — `Chain.to_db()` (line 564) gains a keyword-only `commit: bool = True` parameter; the inline `db.session.commit()` at line 570 becomes conditional. `Chain.add_block()` (line 153) gains the same parameter; forwards to `Block.to_db()`. ~6 lines changed.
+- **Modify:** `src/cancelchain/node.py` — `Node.add_block()` (line 181) and `Node.create_chain()` (line 196) both gain a keyword-only `commit: bool = True` parameter. `Node.add_block` forwards to `chain.add_block()`, `self.create_chain()`, and `chain.to_db()`. `Node.create_chain` forwards to its internal `chain.add_block()` call. `Node.fill_chain` apply loop is refactored to call `self.add_block(block, commit=False)`, accumulate an `applied` list, commit once at the end / rollback on exception, and defer `new_block_signal.send` calls to after the commit. ~22 lines changed.
 - **Modify:** `src/cancelchain/signals.py` — add a multi-line `#` comment above the `new_block` definition documenting its new "fires after fill_chain commits, in apply order" semantics. (Receive-path single-block emission unchanged.) ~4 lines added.
 - **Modify:** `tests/test_verification_audit.py` — remove the `@pytest.mark.xfail(strict=True)` decorator on `test_a2_e_partial_chain_adoption_via_invalid_tip`. The test body is unchanged; it becomes a real pass.
 - **Modify:** `docs/superpowers/audits/2026-05-29-verification-pipeline-audit.md` —

@@ -177,10 +177,11 @@ grep -n 'sync_longest_chain_blocks' src/cancelchain/models.py src/cancelchain/ch
 ```
 
 Confirm:
-- `Block.to_db()` calls `self.to_dao().commit()` → `BlockDAO.commit()` at `models.py:793` (or near) which does `db.session.add(self); db.session.commit()`. Will be modified to accept a keyword-only `commit: bool = True` parameter.
+- `Block.to_db()` (block.py:342) calls `self.to_dao().commit()` → `BlockDAO.commit()` which lives inside `class BlockDAO` (defined at `models.py:251`). The actual `def commit(self)` is around `models.py:335`. Use `grep -n -B 30 'def commit' src/cancelchain/models.py | grep -E 'class |def commit'` to map each `def commit` to its enclosing class — only modify the one inside `BlockDAO`. **Do NOT modify TransactionDAO.commit (line ~97) or ChainDAO.commit (line ~793) or any other DAO commit.** `BlockDAO.commit` does `db.session.add(self); db.session.commit()`. Will be modified to accept a keyword-only `commit: bool = True` parameter.
 - `Chain.to_db()` (chain.py:564) does `db.session.add(dao); db.session.flush(); self.cid = dao.id; dao.sync_longest_chain_blocks(); db.session.commit()`. The flush is required before `sync_longest_chain_blocks()` so the dao gets an ID. Will be modified to make the trailing `db.session.commit()` conditional.
 - `Chain.add_block()` (chain.py:153) does `self.validate_block(block); block.to_db(); self.block_hash = block.block_hash`. Will be modified to pass `commit` through to `block.to_db()`.
-- `Node.add_block()` (node.py:181-194) catches `SQLAlchemyError` and calls `rollback_session()`. Will be modified to pass `commit` through to `chain.add_block()` and `chain.to_db()`.
+- `Node.add_block()` (node.py:181-194) catches `SQLAlchemyError` and calls `rollback_session()`. Has the create_chain fallback at line 187 (`chain = self.create_chain(block=block)`). Will be modified to pass `commit` through to `chain.add_block()`, `self.create_chain()`, and `chain.to_db()`.
+- `Node.create_chain()` (node.py:196-201) calls `chain.add_block(block)` internally. Will be modified to accept and forward `commit`. Without this, the create_chain fallback path would commit inside the loop even when `fill_chain` requests `commit=False`.
 - `dao.sync_longest_chain_blocks()` — confirm it only reads/writes session-local state (uses `db.session.execute(...)` queries that see uncommitted-but-flushed rows). If it makes a cross-session assumption, behavior could differ under `commit=False`. **This is the spec's Risk 2.**
 
 If any of these don't hold (e.g., `sync_longest_chain_blocks` opens a fresh connection or reads from a different session), STOP and report DONE_WITH_CONCERNS noting the discrepancy — the design may need revision.
@@ -211,9 +212,17 @@ from cancelchain.database import db
 
 ### Step 2: Modify `BlockDAO.commit()` in `models.py`
 
-Locate `BlockDAO.commit()` (around `models.py:793` — verify with `grep -n -B 1 'def commit' src/cancelchain/models.py | head -10` and confirm the right one is BlockDAO's, not another DAO's).
+**Critical:** there are 8 `def commit(self) -> None:` methods in `models.py`, one per DAO. They are at lines 97 (TransactionDAO), 335 (BlockDAO), 793 (ChainDAO), 854 (PendingTxnDAO), 909 (PendingIOflowDAO), 929 (ChainFill), 955 (ChainFillBlock), and 987 (ApiToken). **Only modify the one inside `class BlockDAO` (around line 335 — between the BlockDAO class definition at line 251 and the next class LongestChainBlockDAO at line 466).**
 
-Find:
+Confirm with:
+
+```bash
+grep -n -B 30 'def commit' src/cancelchain/models.py | grep -E 'class |def commit' | head -20
+```
+
+The output associates each `def commit` with its enclosing class. Pick the one preceded by `class BlockDAO`.
+
+Find (inside `class BlockDAO`):
 
 ```python
     def commit(self) -> None:
@@ -232,7 +241,7 @@ Replace with:
             db.session.flush()
 ```
 
-Important: only modify the `BlockDAO.commit()`. Other DAOs in models.py have similar `commit()` methods (TransactionDAO, InflowDAO, OutflowDAO, etc.) — leave those alone. The deferred-commits path only flows through `BlockDAO.commit()` from fill_chain.
+Leave the other 7 DAO `commit()` methods unchanged. The deferred-commits path only flows through `BlockDAO.commit()` from `fill_chain`.
 
 ### Step 3: Modify `Block.to_db()` in `block.py`
 
@@ -295,9 +304,11 @@ Replace with:
         self.block_hash = block.block_hash
 ```
 
-### Step 5: Modify `Node.add_block()` in `node.py`
+### Step 5: Modify `Node.add_block()` AND `Node.create_chain()` in `node.py`
 
-Find (around `node.py:181-194`):
+These two methods must change together — `Node.add_block` calls `self.create_chain(...)` as a fallback when no Chain currently has the block's prev_hash as its tip, and `create_chain` internally calls `chain.add_block(...)`. If only `Node.add_block` is updated, the fallback path still commits inside the loop and breaks atomicity (Copilot's PR #86 round-3 finding).
+
+Find `Node.add_block` (around `node.py:181-194`):
 
 ```python
     def add_block(self, block: Block) -> Block | None:
@@ -325,7 +336,7 @@ Replace with:
             if chain:
                 chain.add_block(block, commit=commit)
             else:
-                chain = self.create_chain(block=block)
+                chain = self.create_chain(block=block, commit=commit)
             chain.to_db(commit=commit)
         except SQLAlchemyError:
             rollback_session()
@@ -335,7 +346,31 @@ Replace with:
         return block
 ```
 
-Note: `create_chain` calls `chain.add_block(block)` internally; that call keeps the default `commit=True`. That's fine for the single-block create-chain path, which fires only when no chain currently extends the block's prev_hash. With `commit=False`, this means create-chain's inner add_block commits, BUT the very next line `chain.to_db(commit=False)` flushes without commit, so the chain-row state is no longer durable until the outer batch commits — but the inner add_block's commit already committed the block row. This is a edge case worth tracing; if it surfaces during testing, route the create-chain case through fill_chain differently (e.g., inline). For now, the test suite catches any regression.
+Then find `Node.create_chain` (around `node.py:196-201`):
+
+```python
+    def create_chain(self, block: Block | None = None) -> Chain:
+        block_hash = block.prev_hash if block is not None else None
+        chain = Chain(block_hash=block_hash)
+        if block is not None:
+            chain.add_block(block)
+        return chain
+```
+
+Replace with:
+
+```python
+    def create_chain(
+        self, block: Block | None = None, *, commit: bool = True
+    ) -> Chain:
+        block_hash = block.prev_hash if block is not None else None
+        chain = Chain(block_hash=block_hash)
+        if block is not None:
+            chain.add_block(block, commit=commit)
+        return chain
+```
+
+This ensures the create-chain fallback path respects `commit=False` end-to-end: `fill_chain` → `Node.add_block(commit=False)` → `Node.create_chain(commit=False)` → `chain.add_block(commit=False)` → `Block.to_db(commit=False)` → `BlockDAO.commit(commit=False)` → `db.session.flush()`. No early commit anywhere along the path.
 
 ### Step 6: Refactor `Node.fill_chain` apply loop
 
@@ -519,10 +554,11 @@ http_post = _signals.signal('http-post')
 Insert a 4-line `#` comment above the `new_block` line:
 
 ```python
-# Fires for each newly-persisted block. From Node.receive_block: fires
-# immediately after the single-block commit. From Node.fill_chain: fires
-# only after the batch's db.session.commit() succeeds, in apply order
-# — never for blocks that were rolled back by a later validation failure.
+# Fires for each newly-persisted block. From Node.process_block (the
+# single-block delegate of receive_block): fires immediately after the
+# per-block commit. From Node.fill_chain: fires only after the batch's
+# db.session.commit() succeeds, in apply order — never for blocks that
+# were rolled back by a later validation failure.
 new_block = _signals.signal('new-block')
 ```
 
@@ -670,11 +706,16 @@ invalid tip.
 
 Adds a keyword-only `commit: bool = True` parameter to
 BlockDAO.commit(), Block.to_db(), Chain.to_db(), Chain.add_block(),
-and Node.add_block(). When commit=False, db.session.commit() is
-replaced with db.session.flush() so rows stay in the autobegun root
-transaction. Node.fill_chain passes commit=False per block and issues
-a single db.session.commit() after the loop succeeds (or
-db.session.rollback() on exception).
+Node.add_block(), and Node.create_chain(). When commit=False,
+db.session.commit() is replaced with db.session.flush() so rows stay
+in the autobegun root transaction. Node.fill_chain passes commit=False
+per block and issues a single db.session.commit() after the loop
+succeeds (or db.session.rollback() on exception).
+
+Node.create_chain is part of the chain because Node.add_block falls
+back to it when the block's prev_hash exists as a Block row but isn't
+currently a Chain tip; without threading commit through, the fallback
+path would commit inside the loop.
 
 Why not SAVEPOINT (db.session.begin_nested())? SQLAlchemy 2.0's
 Session.commit() commits the outermost transaction unconditionally,
@@ -720,7 +761,7 @@ A hostile peer can no longer force partial adoption of a fork prefix by serving 
 
 ## Implementation notes
 
-- **Deferred-commits approach.** Add a keyword-only \`commit: bool = True\` parameter to \`BlockDAO.commit()\`, \`Block.to_db()\`, \`Chain.to_db()\`, \`Chain.add_block()\`, and \`Node.add_block()\`. When \`commit=False\`, \`db.session.commit()\` is replaced with \`db.session.flush()\`. \`Node.fill_chain\` passes \`commit=False\` per block and issues a single \`db.session.commit()\` after the loop succeeds (or \`db.session.rollback()\` on exception).
+- **Deferred-commits approach.** Add a keyword-only \`commit: bool = True\` parameter to \`BlockDAO.commit()\`, \`Block.to_db()\`, \`Chain.to_db()\`, \`Chain.add_block()\`, \`Node.add_block()\`, and \`Node.create_chain()\` (the last to make the create-chain fallback respect \`commit=False\` end-to-end). When \`commit=False\`, \`db.session.commit()\` is replaced with \`db.session.flush()\`. \`Node.fill_chain\` passes \`commit=False\` per block and issues a single \`db.session.commit()\` after the loop succeeds (or \`db.session.rollback()\` on exception).
 - **Why not SAVEPOINT?** SQLAlchemy 2.0's \`Session.commit()\` commits the outermost transaction unconditionally, automatically releasing any SAVEPOINTs in effect (per docstring; \`trans.commit(_to_root=True)\` in source). The per-block commits inside \`to_db()\` would commit the root and release the savepoint on the first iteration. Surfaced by Copilot review on the docs PR.
 - **Backward compatible.** All existing callers omit the new parameter and get the default \`commit=True\` behavior. The keyword-only \`*,\` separator prevents accidental positional misuse.
 - **\`new_block_signal\` emission deferred to post-commit.** Defense-in-depth: no listeners exist today, but the deferred-batch semantic is the correct default for any future consumer. \`signals.py\` gets a multi-line comment documenting the contract.
@@ -802,7 +843,7 @@ grep -n 'commit: bool = True' src/cancelchain/models.py src/cancelchain/block.py
 grep -n 'Fires for each newly-persisted block' src/cancelchain/signals.py
 ```
 
-Expected: at least one `commit=False` match in node.py (the fill_chain apply loop); 5 `commit: bool = True` matches (one per modified method); one signal comment match.
+Expected: at least one `commit=False` match in node.py (the fill_chain apply loop and the inner forwarding calls in `Node.add_block`/`Node.create_chain`); 6 `commit: bool = True` matches (one per modified method — `BlockDAO.commit`, `Block.to_db`, `Chain.to_db`, `Chain.add_block`, `Node.add_block`, `Node.create_chain`); one signal comment match.
 
 - [ ] **Step 3: xfail decorator removed**
 
@@ -880,17 +921,17 @@ If Copilot review requests substantive changes, push a new commit (do not amend 
 
 Task 3 Steps 1 + 6 ensure `from cancelchain.database import db` is present in node.py's imports. If absent, the explicit `db.session.commit()` / `db.session.rollback()` calls in fill_chain raise `NameError` at runtime. Mitigation: Task 3 Step 7 (ruff + mypy) catches missing imports before pytest runs.
 
-### Risk: `commit` parameter not propagated through all 5 method signatures
+### Risk: `commit` parameter not propagated through all 6 method signatures
 
-Task 3 modifies 5 methods (BlockDAO.commit, Block.to_db, Chain.to_db, Chain.add_block, Node.add_block). Each must forward `commit=commit` to the next layer. If any layer drops the parameter, `fill_chain`'s `commit=False` reaches that layer as the default `commit=True`, defeating atomicity. Mitigation: Task 3 Step 8 (`pytest --runxfail tests/test_verification_audit.py::test_a2_e_partial_chain_adoption_via_invalid_tip`) verifies end-to-end; if the test still fails, trace which layer dropped the parameter.
+Task 3 modifies 6 methods (BlockDAO.commit, Block.to_db, Chain.to_db, Chain.add_block, Node.add_block, Node.create_chain). Each must forward `commit=commit` to the next layer. If any layer drops the parameter, `fill_chain`'s `commit=False` reaches that layer as the default `commit=True`, defeating atomicity. Mitigation: Task 3 Step 8 (`pytest --runxfail tests/test_verification_audit.py::test_a2_e_partial_chain_adoption_via_invalid_tip`) verifies end-to-end; if the test still fails, trace which layer dropped the parameter.
 
 ### Risk: `Chain.to_db()`'s `sync_longest_chain_blocks()` regresses under `commit=False`
 
 Task 2 Step 3's targeted re-read confirms whether `sync_longest_chain_blocks` only touches session-local state (visible after flush) or assumes a fully-committed state (would require a commit). If the latter, the deferred-commits approach breaks chain materialization. Recovery: either inline the relevant bits of `sync_longest_chain_blocks` into a flush-safe variant, or fall back to inlining persistence in `fill_chain` (bypass `Chain.to_db()` entirely). The xfail demonstration test exercises a 3-block hostile fork, so any materialization bug surfaces quickly.
 
-### Risk: `create_chain` edge case
+### Risk: editing the wrong `def commit()` in `models.py`
 
-`Node.add_block` has a fallback: when no chain extends the block's prev_hash, it calls `self.create_chain(block=block)` which calls `chain.add_block(block)` with the default `commit=True`. Inside `fill_chain` with `commit=False`, this would commit the inner add_block but not the outer chain.to_db — a half-state scenario. Mitigation: the existing `Node.add_block` path actually only hits create_chain on the FIRST block of a brand-new chain (genesis or initial sync); fill_chain typically extends an existing chain so `Chain.from_db(prev_hash)` returns a chain on every iteration. If the demonstration test happens to exercise the create_chain fallback path, the implementer routes around it (e.g., by inlining or by ensuring `Chain.from_db` finds the chain via the just-flushed parent).
+There are 8 `def commit(self) -> None:` methods in `models.py`, one per DAO. Task 3 Step 2 must edit ONLY the one inside `class BlockDAO` (around line 335). The other 7 (TransactionDAO at line 97, ChainDAO at line 793, etc.) must stay unchanged. Mitigation: Step 2 includes a `grep -n -B 30 'def commit' src/cancelchain/models.py | grep -E 'class |def commit'` command that maps each `def commit` to its enclosing class — the implementer reads this output before making the edit.
 
 ### Risk: the docs PR (Task 1) takes longer than expected to review/merge
 
