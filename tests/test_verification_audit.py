@@ -40,9 +40,9 @@ from cancelchain.transaction import Transaction
 from cancelchain.util import dt_2_iso, now, now_iso
 
 # Matches the `easy_mill_chain` session-scoped fixture's patched
-# MAX_TARGET — every target in tests is the 64-byte all-F hash so PoW
-# is trivially found and the chain.block_target retarget formula always
-# returns this value.
+# MAX_TARGET — every target in tests is the 64-character all-F hex
+# string (the max 256-bit target) so PoW is trivially found and the
+# chain.block_target retarget formula always returns this value.
 TEST_TARGET = 'F' * 64
 
 
