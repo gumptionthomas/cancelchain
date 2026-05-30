@@ -149,7 +149,7 @@ def _hostile_block(
 def test_a2_e_partial_chain_adoption_via_invalid_tip(
     app, time_machine, wallet
 ) -> None:
-    """A2.e: hostile peer's invalid tip leaves earlier blocks persisted.
+    """A2.e: hostile peer's invalid tip no longer leaves blocks persisted.
 
     Pre-state: Local chain has only a mined genesis block (height 1).
     Attack: A hostile peer offers a 4-block chain whose tip block has an
@@ -159,13 +159,17 @@ def test_a2_e_partial_chain_adoption_via_invalid_tip(
     correct target, idx-contiguous). Node.fill_chain is invoked with the
     invalid tip; request_block is patched to serve the intermediate
     blocks on backward walk.
-    Expected after remediation: fill_chain returns False AND no
-    intermediate block enters BlockDAO (the apply loop rolls back any
-    successful per-block commits when a later block fails validation,
-    e.g., via db.session.begin_nested or a validate-then-persist split).
-    Observed today: the three intermediate blocks are committed to
-    BlockDAO and ChainDAO advances to the tip of the partial fork,
-    even though fill_chain returns False overall.
+    Behavior (post-remediation, verified by this test): fill_chain
+    returns False AND no intermediate block enters BlockDAO. The fix
+    threads a keyword-only `commit: bool = True` parameter through
+    BlockDAO.commit / Block.to_db / Chain.to_db / Chain.add_block /
+    Node.add_block / Node.create_chain so fill_chain can call
+    self.add_block(block, commit=False) per iteration (flush instead
+    of commit), then issue a single db.session.commit() after the
+    loop. On exception (e.g., the InvalidBlockIndexError this test
+    triggers on the tip), db.session.rollback() undoes every flushed
+    block in the batch. ChainDAO's tip is unchanged from before the
+    attack.
     """
     with app.app_context():
         # Step 1: persist a local genesis block so our node has a known
