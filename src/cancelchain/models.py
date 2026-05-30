@@ -62,6 +62,7 @@ class TransactionDAO(Base):
     address: Mapped[str | None] = mapped_column(String(100))
     public_key: Mapped[str | None] = mapped_column(String(500))
     signature: Mapped[str | None] = mapped_column(String(500))
+    prev_hash: Mapped[str | None] = mapped_column(String(100))
     blocks: Mapped[list[BlockDAO]] = relationship(
         secondary=block_transactions, back_populates='transactions'
     )
@@ -80,6 +81,7 @@ class TransactionDAO(Base):
         address: str | None = None,
         public_key: str | None = None,
         signature: str | None = None,
+        prev_hash: str | None = None,
         inflow_daos: list[InflowDAO] | None = None,
         outflow_daos: list[OutflowDAO] | None = None,
     ) -> None:
@@ -89,6 +91,7 @@ class TransactionDAO(Base):
         self.address = address
         self.public_key = public_key
         self.signature = signature
+        self.prev_hash = prev_hash
         for inflow_dao in inflow_daos or []:
             inflow_dao.transaction = self
         for outflow_dao in outflow_daos or []:

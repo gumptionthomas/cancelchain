@@ -90,6 +90,7 @@ class TransactionModel(BaseModel):
         list[OutflowModel], Field(min_length=1, max_length=MAX_FLOWS)
     ]
     version: Literal['1']
+    prev_hash: MillHashType | None = None
 
     @model_validator(mode='after')
     def validate_pk_address(self) -> Self:
@@ -102,11 +103,15 @@ class RegularTransactionModel(TransactionModel):
     inflows: Annotated[
         list[InflowModel], Field(min_length=1, max_length=MAX_FLOWS)
     ]
+    # Regular transactions are not block-bound; a prev_hash must not be set.
+    prev_hash: None = None
 
 
 class CoinbaseTransactionModel(TransactionModel):
     inflows: Annotated[list[InflowModel], Field(min_length=0, max_length=0)]
     outflows: Annotated[list[OutflowModel], Field(min_length=1, max_length=4)]
+    # Coinbases must carry their block's prev_hash binding.
+    prev_hash: MillHashType
 
 
 @dataclass(order=True)
@@ -119,6 +124,7 @@ class Transaction:
     inflows: list[Inflow] = field(default_factory=list, compare=False)
     outflows: list[Outflow] = field(default_factory=list, compare=False)
     version: str = field(default=VERSION_1, compare=False, repr=False)
+    prev_hash: str | None = field(default=None, compare=False, repr=False)
 
     def __post_init__(self) -> None:
         # `wallet` is a non-field instance attribute set by `set_wallet()`.
@@ -134,16 +140,20 @@ class Transaction:
 
     @property
     def data_csv(self) -> str:
-        return ','.join(
-            [
-                str(self.timestamp),
-                str(self.address),
-                str(self.public_key),
-                ','.join(i.data_csv for i in self.inflows),
-                ','.join(o.data_csv for o in self.outflows),
-                str(self.version),
-            ]
-        )
+        fields = [
+            str(self.timestamp),
+            str(self.address),
+            str(self.public_key),
+            ','.join(i.data_csv for i in self.inflows),
+            ','.join(o.data_csv for o in self.outflows),
+            str(self.version),
+        ]
+        # A4.c v2: coinbases bind their block's prev_hash into the txid.
+        # Conditional append keeps regular-txn data_csv (and txids)
+        # byte-identical to the pre-binding scheme.
+        if self.prev_hash is not None:
+            fields.append(str(self.prev_hash))
+        return ','.join(fields)
 
     @property
     def is_sealed(self) -> bool:
@@ -261,6 +271,7 @@ class Transaction:
             address=self.address,
             public_key=self.public_key,
             signature=self.signature,
+            prev_hash=self.prev_hash,
             inflow_daos=[
                 InflowDAO(txid, idx, inflow.outflow_txid, inflow.outflow_idx)  # type: ignore[arg-type]
                 for idx, inflow in enumerate(self.inflows)
@@ -311,6 +322,7 @@ class Transaction:
             address=dao.address,
             public_key=dao.public_key,
             signature=dao.signature,
+            prev_hash=dao.prev_hash,
             inflows=[
                 Inflow(
                     outflow_txid=inflow_dao.outflow_txid,
@@ -344,6 +356,7 @@ class Transaction:
         schadenfreude: int,
         grace: int,
         mudita: int,
+        prev_hash: str,
     ) -> Self:
         outflows: list[Outflow] = []
         if reward:
@@ -356,7 +369,7 @@ class Transaction:
             outflows.append(Outflow(amount=grace, address=wallet.address))
         if mudita:
             outflows.append(Outflow(amount=mudita, address=wallet.address))
-        cb = cls(outflows=outflows)
+        cb = cls(outflows=outflows, prev_hash=prev_hash)
         cb.set_wallet(wallet)
         cb.seal()
         cb.sign()

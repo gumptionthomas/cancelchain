@@ -1,5 +1,6 @@
 import pytest
 
+from cancelchain.chain import GENESIS_HASH
 from cancelchain.exceptions import (
     InvalidSignatureError,
     InvalidTransactionError,
@@ -121,14 +122,19 @@ def test_txn_invalid_signature(single_txn):
 
 def test_db(app, wallet):
     with app.app_context():
-        cb = Transaction.coinbase(wallet, 20, 10, 9, 8)
+        cb = Transaction.coinbase(wallet, 20, 10, 9, 8, prev_hash=GENESIS_HASH)
         cb.to_db()
         cb_copy = Transaction.from_db(cb.txid)
         assert cb_copy == cb
+        # prev_hash is compare=False, so == ignores it; assert the
+        # DAO round-trip restored it explicitly, and that the reloaded
+        # coinbase's recomputed txid still matches (validate_txid).
+        assert cb_copy.prev_hash == cb.prev_hash == GENESIS_HASH
+        cb_copy.validate_coinbase()
 
 
 def test_pending_txns(app, subject, wallet):
-    cb = Transaction.coinbase(wallet, 10, 0, 0, 0)
+    cb = Transaction.coinbase(wallet, 10, 0, 0, 0, prev_hash=GENESIS_HASH)
     with app.app_context():
         cb.to_db()
         pending = PendingTxnSet()
@@ -215,3 +221,33 @@ def test_pending_add_outflow_missing_amount_raises(app, subject, wallet):
             InvalidTransactionError, match='Outflow 0 missing amount'
         ):
             pending.add(txn)
+
+
+def test_regular_txn_data_csv_excludes_prev_hash(wallet):
+    """A4.c v2 guard: a regular txn's data_csv (and therefore its txid)
+    is unchanged by the coinbase prev_hash binding.
+
+    The prev_hash field is conditionally appended to data_csv only when
+    set; regular txns leave it None, so their data_csv must be the exact
+    6-field join (timestamp, address, public_key, inflows, outflows,
+    version) with no trailing prev_hash field.
+    """
+    t = Transaction()
+    t.add_inflow(Inflow(outflow_txid='a' * 64, outflow_idx=0))
+    t.add_outflow(Outflow(amount=5, address=wallet.address))
+    t.set_wallet(wallet)
+    t.seal()
+    assert t.prev_hash is None
+    expected = ','.join(
+        [
+            str(t.timestamp),
+            str(t.address),
+            str(t.public_key),
+            ','.join(i.data_csv for i in t.inflows),
+            ','.join(o.data_csv for o in t.outflows),
+            str(t.version),
+        ]
+    )
+    assert t.data_csv == expected
+    # to_dict (asdict_sans_none) must not surface a prev_hash key.
+    assert 'prev_hash' not in t.to_dict()

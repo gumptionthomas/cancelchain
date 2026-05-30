@@ -102,6 +102,10 @@ class InvalidCoinbaseErrorRewardError(InvalidCoinbaseError):
     pass
 
 
+class MismatchedCoinbaseError(InvalidCoinbaseError):
+    pass
+
+
 class InvalidBlockError(CCError):
     pass
 

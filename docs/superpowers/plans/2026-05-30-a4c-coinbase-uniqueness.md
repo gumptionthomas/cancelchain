@@ -1,3 +1,5 @@
+> **⚠️ SUPERSEDED (2026-05-30).** This v1 approach (chain-lineage coinbase-txid uniqueness check) proved unimplementable: coinbase txids are not unique across legitimately-mined consecutive blocks (no inflows; second-resolution timestamps). See `docs/superpowers/specs/2026-05-30-a4c-v2-coinbase-binding-design.md` for the v2 design (bind the block's prev_hash into the coinbase txid). Kept for historical reference only.
+
 # A4.c — coinbase-txid uniqueness check implementation plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
