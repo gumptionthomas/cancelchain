@@ -268,16 +268,29 @@ Replace with:
         reward = self.block_reward(block)
         cb = block.coinbase
         if cb is not None:
-            # A4.c: reject same-chain coinbase replay. self.get_transaction
-            # defaults start_block to self.last_block (the candidate block's
-            # parent), walking the parent's lineage backward. The candidate
-            # block itself is never inspected, so the cb is found only if
-            # it's already persisted somewhere upstream in THIS chain.
-            # Cross-fork replay (Attack b's case) stays legitimate because
-            # the walk is chain-scoped via Block.from_db(prev_hash) and the
-            # underlying per-block recursive CTE in
-            # BlockDAO.get_transaction_in_chain.
-            if self.get_transaction(cb.txid) is not None:
+            # A4.c: reject same-chain coinbase replay. Start the lookup
+            # from the candidate block's PARENT, not self.last_block.
+            # During Chain.validate() full-chain revalidation,
+            # self.last_block is the chain tip while `block` is an
+            # interior block, so a default start_block=self.last_block
+            # walk would include `block` itself (and its descendants) and
+            # find the candidate's own coinbase — falsely flagging every
+            # block and breaking `cancelchain validate`. Searching the
+            # parent's lineage instead finds the cb only if it was already
+            # persisted UPSTREAM in THIS chain. Cross-fork replay (Attack
+            # b) stays legitimate because the walk is chain-scoped via the
+            # per-block recursive CTE in BlockDAO.get_transaction_in_chain.
+            # A genesis block has no findable parent (Block.from_db returns
+            # None), so the check is skipped — a genesis coinbase can't be
+            # a replay of anything.
+            parent = (
+                Block.from_db(block.prev_hash) if block.prev_hash else None
+            )
+            if (
+                parent is not None
+                and self.get_transaction(cb.txid, start_block=parent)
+                is not None
+            ):
                 raise DuplicateCoinbaseError()
             outflow = cb.get_outflow(0)
             if outflow is not None and outflow.amount != reward:
@@ -355,7 +368,8 @@ uv run pytest --deselect 'tests/test_verification_audit.py::test_a4_c_ii_coinbas
 Expected: `237 passed, 4 xfailed, 1 skipped`. A4.c is currently one of the 5 xfailed tests (not one of the 237 passed), so deselecting it leaves the passed count UNCHANGED at 237 and drops the xfail count from 5 to 4. The 1 skip is unchanged. No `failed`.
 
 If you run the full suite without the deselect, you will see `1 failed` on `test_a4_c_ii_coinbase_replay_inflates_balance` with `[XPASS(strict)]` — that is the expected signal, not a regression. Any OTHER failure means the new check is over-firing. Investigate before proceeding:
-- If `tests/test_chain.py` or `tests/test_miller.py` fails, the chain instance may be in an unexpected state when `validate_block_coinbase` runs. Trace the chain construction path used by that test.
+- **`tests/test_chain.py` failures are the canary for the `Chain.validate()` revalidation bug.** `test_chain.py` calls `chain.validate()` (which loops every block through `validate_block` → `validate_block_coinbase` with `self.last_block` pinned to the tip) and has a dedicated `test_validate_block_coinbase`. If the fix used `self.last_block` as the walk's start instead of the candidate's parent, EVERY block's coinbase would be found in the chain and these tests would fail with `DuplicateCoinbaseError`. If you see that, the `parent = Block.from_db(block.prev_hash)` + `start_block=parent` wiring in Step 2 was not applied correctly — re-check it.
+- If `tests/test_miller.py` fails, the chain instance may be in an unexpected state when `validate_block_coinbase` runs. Trace the chain construction path used by that test.
 - If `tests/test_block.py` fails on a coinbase-related test, the check may be running where the test doesn't expect chain context.
 
 ---

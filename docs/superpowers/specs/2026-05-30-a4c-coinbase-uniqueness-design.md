@@ -20,7 +20,7 @@ Reject same-chain coinbase-txid replay at `Chain.validate_block_coinbase`. After
 ## Decisions taken during brainstorming
 
 - **Chain-lineage check via `self.get_transaction(cb.txid)`** (Approach A) over DB-wide `TransactionDAO.get(cb.txid)` (Approach B) or protocol-level coinbase-author binding (Approach C). Approach A matches the existing chain-scoped validation pattern (`validate_txn_inflow` calls `self.get_transaction(outflow_txid, start_block=block)` for inflow uniqueness — analogous logic, slightly different scope). Approach B would reject cross-fork coinbase replay incorrectly, regressing Attack b's documented legitimacy. Approach C would require introducing a "block author" protocol field; out of scope for a Medium-severity accounting bug.
-- **`self.get_transaction(cb.txid)` without `start_block`** (defaults to `self.last_block`, the candidate block's parent) over `start_block=block` (would falsely find the cb itself in `block.txns`). For any chain instance whose `block_hash` equals the candidate's `prev_hash` (the standard path via `Chain.from_db(block_hash=block.prev_hash)`), `self.last_block = Block.from_db(self.block_hash)` returns the parent — exactly the right starting point.
+- **`self.get_transaction(cb.txid, start_block=parent)` with an explicit parent** (`parent = Block.from_db(block.prev_hash)`) over either `start_block=block` (would find the cb itself in `block.txns`) or the `self.last_block` default (correct only in the add-block path, but **wrong** during `Chain.validate()` revalidation, where `self.last_block` is the chain tip and `block` is an interior block — the walk would include `block` itself and falsely flag every coinbase). Computing the parent from `block.prev_hash` is correct in both contexts and skips cleanly for genesis (`Block.from_db` returns `None`). This was the key correction from PR #88 round-3 review.
 - **New `DuplicateCoinbaseError(InvalidCoinbaseError)` exception class.** Mirrors the existing `InvalidCoinbaseErrorRewardError(InvalidCoinbaseError)` pattern for greppable failure-mode reporting. The xfail test asserts `pytest.raises(InvalidCoinbaseError)`, which matches the new subclass via inheritance — no test body change needed.
 - **Check fires before the reward check.** A duplicate coinbase by definition once had the right reward (it was previously valid), so the reward check would also pass. Behaviorally order-independent, but surfacing the more fundamental issue first (the coinbase isn't ours) gives clearer error messages.
 - **Single PR for spec + impl plan; second PR for implementation.** Mirrors the PR #86 + #87 precedent.
@@ -50,20 +50,38 @@ def validate_block_coinbase(self, block: Block) -> None:
     reward = self.block_reward(block)
     cb = block.coinbase
     if cb is not None:
-        # A4.c: reject same-chain coinbase replay. self.get_transaction
-        # defaults start_block to self.last_block (the candidate block's
-        # parent), walking the parent's lineage backward. The candidate
-        # block itself is never inspected, so the cb is found only if
-        # it's already persisted somewhere upstream in THIS chain. Cross-
-        # fork replay (Attack b's case) stays legitimate because the walk
-        # is chain-scoped via Block.from_db(prev_hash) traversal and the
-        # underlying per-block recursive CTE in get_transaction_in_chain.
-        if self.get_transaction(cb.txid) is not None:
+        # A4.c: reject same-chain coinbase replay. Start the lookup from
+        # the candidate block's PARENT, not self.last_block. During
+        # Chain.validate() full-chain revalidation, self.last_block is the
+        # chain tip while `block` is an interior block, so a default
+        # start_block=self.last_block walk would include `block` itself
+        # (and its descendants) and find the candidate's own coinbase —
+        # falsely flagging every block. Searching the parent's lineage
+        # instead finds the cb only if it was already persisted UPSTREAM
+        # in THIS chain. Cross-fork replay (Attack b) stays legitimate
+        # because the walk is chain-scoped via the per-block recursive CTE
+        # in BlockDAO.get_transaction_in_chain. A genesis block has no
+        # findable parent (Block.from_db returns None), so the check is
+        # skipped — a genesis coinbase can't be a replay of anything.
+        parent = (
+            Block.from_db(block.prev_hash) if block.prev_hash else None
+        )
+        if (
+            parent is not None
+            and self.get_transaction(cb.txid, start_block=parent)
+            is not None
+        ):
             raise DuplicateCoinbaseError()
         outflow = cb.get_outflow(0)
         if outflow is not None and outflow.amount != reward:
             raise InvalidCoinbaseErrorRewardError()
 ```
+
+Note: `validate_block` (the sole caller) already computes
+`prev_block = Block.from_db(block.prev_hash)` for its own prev-hash /
+ordering checks; `validate_block_coinbase` recomputes it independently
+to keep its signature stable for any other caller. `Block.from_db` is an
+indexed single-row lookup, so the duplicate read is negligible.
 
 ### The new exception
 
@@ -78,7 +96,10 @@ class DuplicateCoinbaseError(InvalidCoinbaseError):
 
 Three properties make this clean:
 
-1. **`self.get_transaction(cb.txid)` defaults `start_block` to `self.last_block`** (chain.py:297). For any chain instance whose `block_hash` is the candidate block's `prev_hash` (the standard case via `Chain.from_db(block_hash=block.prev_hash)`), `self.last_block` returns the parent. The walk inspects ancestor blocks only, never the candidate. No false positive against the cb being validated.
+1. **The lookup starts from the candidate block's parent (`Block.from_db(block.prev_hash)`), not `self.last_block`.** This is correct in both calling contexts:
+   - **Add-block path** (`Chain.from_db(block_hash=block.prev_hash)` → `add_block` → `validate_block` → `validate_block_coinbase`): the candidate block isn't persisted yet; `parent` is the chain tip. Searching the parent's lineage searches everything before the candidate. The candidate's own (fresh) coinbase isn't in that lineage, so no false positive.
+   - **Full-chain revalidation path** (`Chain.validate()` loops `self.blocks`, calling `validate_block(block)` with `self.last_block` pinned to the chain tip): `block` is an interior block, NOT the tip. Starting from `self.last_block` (the tip) would walk back through the whole chain *including `block` itself*, finding the candidate's own coinbase and falsely raising on every block. Starting from `block`'s parent searches only blocks strictly upstream of `block`, so a legitimately-unique coinbase is never flagged. This is the bug this design avoids by computing `parent` explicitly.
+   - **Genesis:** `block.prev_hash` is `None` or `GENESIS_HASH`; `Block.from_db` returns `None`, so `parent is None` and the check is skipped — a genesis coinbase precedes nothing and can't be a replay.
 
 2. **The walk is chain-scoped.** `Chain.get_transaction` follows `prev_hash` links via `Block.from_db(prev_hash)` (chain.py:302) and defers to `BlockDAO.get_transaction_in_chain` once it reaches a persisted ancestor (chain.py:306-308). `get_transaction_in_chain` uses the per-block recursive CTE `_block_chain` scoped to that ancestor's lineage. A coinbase that exists on a competing fork is never found by a walk through this chain's lineage. Cross-fork legitimacy preserved.
 
@@ -134,9 +155,13 @@ If the same legitimate block is received twice (e.g., network glitch), the secon
 
 For receive_block (single-block extension), the walk hits BlockDAO at the immediate parent — O(1) DB lookup + a recursive CTE join. For `fill_chain` (batch extension), the walk may traverse multiple in-flight blocks before hitting persistence. **Mitigation:** equivalent cost to the existing `validate_txn_inflow` call which already runs `self.get_transaction(outflow_txid, start_block=block)` per regular txn. Coinbase txns run the check exactly once per block (one coinbase per block), so the overhead per block is one additional walk — negligible vs. the existing per-txn walks. No new bench gate needed.
 
-### Risk: a future caller invokes `Chain.validate_block_coinbase` with `self.block_hash != block.prev_hash`
+### Risk: caller context where `self.last_block` is not the candidate's parent
 
-The check assumes `self.last_block` resolves to the candidate's parent. If a caller constructs a `Chain` instance whose `block_hash` differs from the candidate's `prev_hash`, the walk would start from the wrong block. **Mitigation:** all current callers (`Chain.validate_block` at chain.py:198) flow through `Chain.from_db(block_hash=block.prev_hash)` → `chain.add_block(block)` → `chain.validate_block(block)` → `validate_block_coinbase(block)`. The `self.block_hash = block.prev_hash` invariant holds end-to-end. If a future refactor breaks that invariant, the impl plan's regression test suite catches it (existing tests construct chain instances and validate; misaligned starting points would surface as unexpected `DuplicateCoinbaseError` raises).
+This was a real bug in the initial design (which used the `self.last_block` default) and is **resolved** by computing `parent = Block.from_db(block.prev_hash)` explicitly. The check no longer depends on `self.last_block` at all, so it is correct regardless of what chain the `validate_block_coinbase` instance represents:
+- **`Chain.validate()` full-chain revalidation** pins `self.last_block` to the tip while validating interior blocks — the original default-`start_block` design would have falsely flagged every coinbase here, breaking `cancelchain validate`. The explicit-parent design searches only blocks strictly upstream of the candidate, so revalidation passes.
+- **Add-block** (`Chain.from_db(block_hash=block.prev_hash)` → `validate_block`) — `self.last_block` happens to equal the parent here, but the explicit-parent lookup produces the same result, so the change is behavior-preserving for this path.
+
+**Mitigation:** the impl plan's regression suite includes a full run of `tests/test_chain.py` / `tests/test_miller.py` (which exercise `Chain.validate` and multi-block add flows) plus the new cross-fork non-regression test; a `cancelchain validate`-style revalidation regression would surface as unexpected `DuplicateCoinbaseError` raises in those tests.
 
 ### Risk: the demonstration test asserts the wrong exception
 
@@ -155,7 +180,7 @@ If a peer or sync race re-receives the same block, the duplicate-coinbase check 
 None at design time. Brainstorming resolved:
 
 - Chain-lineage check (Approach A) over DB-wide or protocol-level alternatives.
-- `self.get_transaction(cb.txid)` (default `start_block=self.last_block`) over `start_block=block`.
+- `self.get_transaction(cb.txid, start_block=parent)` with `parent = Block.from_db(block.prev_hash)` over the `self.last_block` default (which breaks `Chain.validate()` revalidation) or `start_block=block` (which finds the cb itself).
 - New `DuplicateCoinbaseError(InvalidCoinbaseError)` subclass over reusing `InvalidCoinbaseError`.
 - Check fires before the reward check (order is behaviorally irrelevant; diagnostic preference).
 - Single-PR spec + impl-plan; second-PR implementation (mirrors PR #86/#87 precedent).
