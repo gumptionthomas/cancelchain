@@ -11,6 +11,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from cancelchain.block import TXN_TIMEOUT, Block
 from cancelchain.chain import Chain, is_genesis_block
+from cancelchain.database import db
 from cancelchain.exceptions import (
     InvalidBlockError,
     InvalidBlockHashError,
@@ -178,26 +179,37 @@ class Node:
             self.send_block(block, visited_hosts=visited_hosts)
         return block
 
-    def add_block(self, block: Block) -> Block | None:
+    def add_block(self, block: Block, *, commit: bool = True) -> Block | None:
         try:
             chain = Chain.from_db(block_hash=block.prev_hash)
             if chain:
-                chain.add_block(block)
+                chain.add_block(block, commit=commit)
             else:
-                chain = self.create_chain(block=block)
-            chain.to_db()
+                chain = self.create_chain(block=block, commit=commit)
+            chain.to_db(commit=commit)
         except SQLAlchemyError:
             rollback_session()
-            if not (block.block_hash and Block.from_db(block.block_hash)):
+            # In batch mode (commit=False, used by Node.fill_chain),
+            # rollback_session() above has already undone every flushed
+            # block earlier in the batch. Re-raise unconditionally so
+            # fill_chain's except handler aborts the whole batch — otherwise
+            # the swallow path below would let fill_chain continue and
+            # commit later blocks on top of a half-rolled-back session,
+            # reintroducing the partial-adoption bug A2.e is meant to fix.
+            if not commit or not (
+                block.block_hash and Block.from_db(block.block_hash)
+            ):
                 raise
             block = None  # type: ignore[assignment]
         return block
 
-    def create_chain(self, block: Block | None = None) -> Chain:
+    def create_chain(
+        self, block: Block | None = None, *, commit: bool = True
+    ) -> Chain:
         block_hash = block.prev_hash if block is not None else None
         chain = Chain(block_hash=block_hash)
         if block is not None:
-            chain.add_block(block)
+            chain.add_block(block, commit=commit)
         return chain
 
     def request_block(self, block_hash: str) -> Block | None:
@@ -342,13 +354,50 @@ class Node:
                     chain_fill=chain_fill,
                 ).commit()
             progress_switch()
-            for chain_fill_block in chain_fill.blocks:
-                if chain_fill_block.block_json is None:
-                    continue
-                block = Block.from_json(chain_fill_block.block_json)
-                self.add_block(block)
+            # Atomic apply: pass commit=False to each per-block add_block so
+            # rows are flushed (not committed) into the autobegun root
+            # transaction. A single db.session.commit() after the loop
+            # persists all blocks atomically; db.session.rollback() on
+            # exception undoes every flushed block. Closes audit finding
+            # A2.e (hostile-peer partial-fork-prefix adoption).
+            applied: list[Block] = []
+            try:
+                for chain_fill_block in chain_fill.blocks:
+                    if chain_fill_block.block_json is None:
+                        continue
+                    block = Block.from_json(chain_fill_block.block_json)
+                    # A concurrent receive between staging and apply may
+                    # have already persisted this block. add_block is still
+                    # called so the chain tip advances (Block.to_dao()
+                    # returns the existing row, so the inner flush is a
+                    # no-op for the block but updates chain state). Only
+                    # append to applied — and therefore only fire the
+                    # post-commit new_block signal — for blocks this batch
+                    # actually persisted, honoring signals.py's
+                    # "newly-persisted block" contract.
+                    already_persisted = bool(
+                        block.block_hash and Block.from_db(block.block_hash)
+                    )
+                    self.add_block(block, commit=False)
+                    if not already_persisted:
+                        applied.append(block)
+                    progress_next()
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
+                raise
+            # Clean up the ChainFill staging row (its own commit) BEFORE
+            # firing signals, then null out the local handle so the outer
+            # finally doesn't run another commit. Otherwise any DB writes
+            # performed by synchronous new_block listeners would be
+            # bundled into the chain_fill cleanup transaction, undermining
+            # the "post-commit notification" contract.
+            chain_fill.delete()
+            chain_fill = None
+            # Post-commit — fire signals only for confirmed-persisted
+            # blocks, in apply order.
+            for block in applied:
                 new_block_signal.send(self, block=block)
-                progress_next()
             return True
         except Exception as e:
             self.logger.exception(e)
