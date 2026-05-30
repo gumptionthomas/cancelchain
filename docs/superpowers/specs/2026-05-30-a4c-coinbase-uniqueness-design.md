@@ -94,7 +94,7 @@ If the same legitimate block is received twice (e.g., network glitch), the secon
 
 - **Modify:** `src/cancelchain/chain.py` — `Chain.validate_block_coinbase` (line 278) gains a 3-line check + 9-line explanatory comment. ~12 lines added.
 - **Modify:** `src/cancelchain/exceptions.py` — adds `class DuplicateCoinbaseError(InvalidCoinbaseError): pass` next to the existing `InvalidCoinbaseErrorRewardError`. ~3 lines added (with blank-line separator).
-- **Modify:** `tests/test_verification_audit.py` — removes the `@pytest.mark.xfail(strict=True)` decorator on `test_a4_c_ii_coinbase_replay_inflates_balance`. Test body unchanged.
+- **Modify:** `tests/test_verification_audit.py` — (1) removes the `@pytest.mark.xfail(strict=True)` decorator on `test_a4_c_ii_coinbase_replay_inflates_balance` (its body unchanged save a post-fix docstring refresh); (2) adds `test_a4_c_cross_fork_coinbase_replay_accepted`, a non-regression test that builds a competing sibling fork, replays a canonical-fork coinbase onto it, and asserts `validate_block_coinbase` does NOT raise `DuplicateCoinbaseError` (guarding the new check's primary edge case of over-rejecting cross-fork replay); (3) adds `Chain` and `DuplicateCoinbaseError` to the module imports.
 - **Modify:** `docs/superpowers/audits/2026-05-29-verification-pipeline-audit.md`:
   - Remove the A4.c row from the Findings table.
   - Update the per-attack outcome in §Adversary 4 → Attack c.ii from "ACCEPTED at step 4 ... Finding A4.c — Severity Medium: ..." to "REJECTED (fixed by impl PR following from `docs/superpowers/specs/2026-05-30-a4c-coinbase-uniqueness-design.md`) ... Result: Validation correctly rejects (post-remediation). No finding."
@@ -112,7 +112,7 @@ If the same legitimate block is received twice (e.g., network glitch), the secon
 
 - **A4.c demonstration test** (`test_a4_c_ii_coinbase_replay_inflates_balance`) goes from xfail to real pass after decorator removal. CI's `pytest` step verifies.
 - **`pytest --runxfail tests/test_verification_audit.py`** still shows the remaining 4 xfails fail (sanity: no other finding was accidentally caught by the new check).
-- **`uv run pytest` total**: was `237 passed, 5 xfailed, 1 skipped` (post-A2.e); becomes `238 passed, 4 xfailed, 1 skipped`.
+- **`uv run pytest` total**: was `237 passed, 5 xfailed, 1 skipped` (post-A2.e); becomes `239 passed, 4 xfailed, 1 skipped` (A4.c un-xfailed +1, plus a new cross-fork non-regression test +1).
 - **Regression coverage for the modified methods**: `Chain.validate_block_coinbase` is exercised across `tests/test_chain.py`, `tests/test_block.py`, `tests/test_miller.py`, and `tests/test_models.py` via normal block-add flows. All those tests construct fresh coinbase txns; none replay a prior coinbase, so none should regress under the new check.
 - **Manual smoke**: `docker build --target builder -t cc-a4c-final .` to confirm the SQLAlchemy / Python imports load cleanly under the production Python config (no model changes, but worth confirming).
 
@@ -121,8 +121,8 @@ If the same legitimate block is received twice (e.g., network glitch), the secon
 - `src/cancelchain/chain.py:Chain.validate_block_coinbase` contains the `self.get_transaction(cb.txid)` check raising `DuplicateCoinbaseError`.
 - `src/cancelchain/exceptions.py` defines `class DuplicateCoinbaseError(InvalidCoinbaseError)`.
 - `tests/test_verification_audit.py::test_a4_c_ii_coinbase_replay_inflates_balance` has no `@pytest.mark.xfail` decorator and passes.
-- `uv run pytest 2>&1 | tail -3` shows `238 passed, 4 xfailed, 1 skipped`.
-- `uv run pytest --runxfail tests/test_verification_audit.py 2>&1 | tail -3` shows `4 failed, 2 passed` (A2.e and A4.c pass; remaining 4 findings still demonstrate gaps).
+- `uv run pytest 2>&1 | tail -3` shows `239 passed, 4 xfailed, 1 skipped`.
+- `uv run pytest --runxfail tests/test_verification_audit.py 2>&1 | tail -3` shows `4 failed, 3 passed` (A2.e, A4.c, and the cross-fork non-regression test pass; remaining 4 findings still demonstrate gaps).
 - `uv run ruff check src tests`, `uv run ruff format --check src tests`, `uv run mypy`, and the `cancelchain db check` gate all exit 0.
 - Audit doc's Findings table no longer lists A4.c; the per-attack trace in §Adversary 4 → Attack c.ii records the fix and links to this spec; the Executive summary's count is updated to reflect 4 open + 2 closed.
 - ROADMAP's open "Audit remediation" entry no longer lists A4.c; "Closed items" gains an A4.c entry with both the docs PR and impl PR links.
@@ -144,7 +144,7 @@ The test asserts `pytest.raises(InvalidCoinbaseError)`. `DuplicateCoinbaseError(
 
 ### Risk: cross-fork coinbase replay is incorrectly rejected
 
-The walk is chain-scoped (per Architecture point 2), so cross-fork replay should stay legitimate. **Mitigation:** the impl plan includes a manual review step against `Chain.get_transaction` + `BlockDAO.get_transaction_in_chain` to confirm the per-block CTE scoping is preserved. If a future refactor inadvertently makes `get_transaction_in_chain` DB-wide, this check would over-reject and the audit's Attack b would become a finding. The impl plan tests for the cross-fork case explicitly via a new test (deferred to Task 4 — see plan).
+The walk is chain-scoped (per Architecture point 2), so cross-fork replay should stay legitimate. This is the new check's primary edge case — over-rejecting the structurally-legitimate cross-fork replay documented in audit Attack b. **Mitigation (two layers):** (1) the new check reuses `self.get_transaction`, the *identical* chain-scoped method already used (and proven correct) by `Chain.validate_txn_inflow` for inflow uniqueness — the audit's Attack b analysis already established this method scopes to lineage via the per-block recursive CTE in `BlockDAO.get_transaction_in_chain`. (2) the impl plan adds an explicit non-regression test, `test_a4_c_cross_fork_coinbase_replay_accepted` (plan Task 5), that builds a competing sibling fork, replays a canonical-fork coinbase onto it, and asserts `validate_block_coinbase` does NOT raise `DuplicateCoinbaseError`. If a future refactor inadvertently makes `get_transaction_in_chain` DB-wide, that test fails and the regression surfaces before merge.
 
 ### Risk: the check fires on duplicate-receive-block scenarios
 

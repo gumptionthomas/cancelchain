@@ -21,7 +21,7 @@ The companion design spec is `docs/superpowers/specs/2026-05-30-a4c-coinbase-uni
   - `29fd216 docs(a4c): add coinbase-txid uniqueness check design spec`
   This plan adds a second commit on that branch (the plan file itself) and ships both as the docs PR.
 - CI hard-gates (per `.github/workflows/tests.yml`): `ruff check`, `ruff format --check`, `pytest`, `mypy`, and `cancelchain db upgrade` + `cancelchain db check`.
-- Test baseline (post-A2.e): **237 passed, 5 xfailed, 1 skipped**. After the impl PR lands, expect **238 passed, 4 xfailed, 1 skipped** (A4.c moves from xfail to pass).
+- Test baseline (post-A2.e): **237 passed, 5 xfailed, 1 skipped**. After the impl PR lands, expect **239 passed, 4 xfailed, 1 skipped** — A4.c moves from xfail to pass (+1), and a new cross-fork non-regression test (`test_a4_c_cross_fork_coinbase_replay_accepted`, plan Task 5 Step 8) adds another pass (+1).
 - Each PR ends with `wor` (Copilot review wait + reply) and `mwg` (merge when green); the controller handles those, not the implementer subagent. Auto-rereview on cancelchain is inconsistent in practice (per `project_copilot_auto_rereview`) — the controller asks the user to click "Re-request review" if the polling loop times out.
 - Never push directly to `main`.
 
@@ -41,7 +41,7 @@ The companion design spec is `docs/superpowers/specs/2026-05-30-a4c-coinbase-uni
 | 8 | impl PR | run gates + single commit + push + open PR |
 | 9 | acceptance | none (verification only) |
 
-The impl PR is a single commit (the change is one logical unit — fix + housekeeping). No new files; all 6 modified files are existing.
+The impl PR lands as two commits: one main commit covering the fix + housekeeping (Tasks 3-7), and a small follow-up commit that fills in the PR numbers in the ROADMAP closed entry once the PR is open (Task 8 Step 7 — the impl PR number isn't known until `gh pr create` returns). Do not amend or squash locally; cancelchain convention is additive commits. No new files; all 6 modified files are existing.
 
 ---
 
@@ -103,7 +103,7 @@ gh pr create --base main --head docs/a4c-coinbase-uniqueness --title "docs(a4c):
 - Adds the A4.c remediation implementation plan (\`docs/superpowers/plans/2026-05-30-a4c-coinbase-uniqueness.md\`).
 - No code changes.
 
-Remediates audit finding A4.c (Medium): add a chain-lineage uniqueness check on the candidate coinbase's \`txid\` inside \`Chain.validate_block_coinbase\`. The check uses \`self.get_transaction(cb.txid)\` (default \`start_block=self.last_block\`, the candidate block's parent) so the walk inspects ancestor blocks only and preserves cross-fork legitimacy (Attack b's documented case). A new \`DuplicateCoinbaseError(InvalidCoinbaseError)\` is raised when the txid is found in the chain's lineage. Closes the last Medium audit finding; post-fix audit severity is 0 Critical / 0 High / 0 Medium / 4 Low.
+This docs-only PR adds the **design and plan** for the A4.c remediation; it makes no code change and does not itself close the finding. A4.c is closed by the follow-up impl PR (\`fix/a4c-coinbase-uniqueness\`), which adds a chain-lineage uniqueness check on the candidate coinbase's \`txid\` inside \`Chain.validate_block_coinbase\`. That check uses \`self.get_transaction(cb.txid)\` (default \`start_block=self.last_block\`, the candidate block's parent) so the walk inspects ancestor blocks only and preserves cross-fork legitimacy (Attack b's documented case). A new \`DuplicateCoinbaseError(InvalidCoinbaseError)\` is raised when the txid is found in the chain's lineage. A4.c is the last open Medium; once the impl PR lands, audit severity reaches 0 Critical / 0 High / 0 Medium / 4 Low.
 
 ## Test plan
 - [x] Spec self-review passed.
@@ -342,15 +342,17 @@ uv run pytest tests/test_verification_audit.py::test_a4_c_ii_coinbase_replay_inf
 
 Expected: `1 failed — [XPASS(strict)]`. That's the signal to remove the decorator in Task 5.
 
-### Step 7: Regression check — full test suite
+### Step 7: Regression check — full test suite (excluding the not-yet-un-xfailed A4.c test)
+
+The fix is applied but the A4.c xfail decorator is still in place, so the A4.c test is now XPASS(strict) — a **failure** under a plain `uv run pytest`. That single failure is expected and is removed in Task 5. To confirm nothing ELSE regressed, deselect the A4.c test for this check:
 
 ```bash
-uv run pytest 2>&1 | tail -3
+uv run pytest --deselect 'tests/test_verification_audit.py::test_a4_c_ii_coinbase_replay_inflates_balance' 2>&1 | tail -3
 ```
 
-Expected: still `237 passed, 5 xfailed, 1 skipped` (the A4.c xfail decorator is still in place; we'll remove it in Task 5). Existing tests should all pass — none of them construct duplicate-coinbase scenarios.
+Expected: `236 passed, 5 xfailed, 1 skipped` (the full `237 passed` baseline minus the deselected A4.c test, which is no longer counted; the other 5 audit xfails and 1 skip are unchanged). No `failed`.
 
-If any test other than A4.c regresses, the new check is over-firing somehow. Investigate before proceeding:
+If you run the full suite without the deselect, you will see `1 failed` on `test_a4_c_ii_coinbase_replay_inflates_balance` with `[XPASS(strict)]` — that is the expected signal, not a regression. Any OTHER failure means the new check is over-firing. Investigate before proceeding:
 - If `tests/test_chain.py` or `tests/test_miller.py` fails, the chain instance may be in an unexpected state when `validate_block_coinbase` runs. Trace the chain construction path used by that test.
 - If `tests/test_block.py` fails on a coinbase-related test, the check may be running where the test doesn't expect chain context.
 
@@ -465,6 +467,165 @@ uv run pytest tests/test_verification_audit.py::test_a4_c_ii_coinbase_replay_inf
 
 All exit 0; test still passes.
 
+### Step 8: Add the cross-fork non-regression test
+
+The new check's primary edge case is over-rejecting a coinbase that exists only on a competing fork (the structurally-legitimate cross-fork replay documented in audit Attack b). Add a non-regression test that builds a competing sibling fork, replays a canonical-fork coinbase onto it, and asserts `validate_block_coinbase` does NOT raise `DuplicateCoinbaseError`.
+
+First, extend the test module's imports. The current import block (around tests/test_verification_audit.py:28-40) imports `Block`, `GENESIS_HASH`, `REWARD`, `Miller`, `Transaction`, etc., but NOT `Chain` or `DuplicateCoinbaseError`. Add them:
+
+- In the `from cancelchain.chain import (...)` line, add `Chain` (alphabetically: `Chain, GENESIS_HASH, REWARD`).
+- In the `from cancelchain.exceptions import (...)` block, add `DuplicateCoinbaseError` (alphabetically before `InvalidBlockError`).
+
+The result:
+
+```python
+from cancelchain.chain import Chain, GENESIS_HASH, REWARD
+from cancelchain.database import db
+from cancelchain.exceptions import (
+    DuplicateCoinbaseError,
+    InvalidBlockError,
+    InvalidCoinbaseError,
+    InvalidTransactionError,
+)
+```
+
+(Let `ruff format` / `ruff check --fix` settle final import ordering if it differs.)
+
+Then append this test function to the end of `tests/test_verification_audit.py`:
+
+```python
+def test_a4_c_cross_fork_coinbase_replay_accepted(
+    app, time_machine, wallet, miller_2_wallet
+) -> None:
+    """A4.c cross-fork non-regression: a coinbase replayed onto a
+    COMPETING fork (where its txid is NOT in that fork's lineage) is
+    NOT rejected by the new duplicate-coinbase check.
+
+    Guards the new check's main edge case: over-rejecting the
+    structurally-legitimate cross-fork replay documented in audit
+    Attack b. The duplicate-coinbase check walks only the candidate
+    block's own chain lineage (self.get_transaction → the per-block
+    recursive CTE), so a coinbase that exists solely on a sibling fork
+    must remain acceptable.
+
+    Pre-state: canonical chain g1 -> block_1, where block_1's coinbase
+    is T_cb. A competing sibling fork block_1p (idx 1, also extending
+    g1, coinbase paying miller_2_wallet) is persisted as a parallel
+    chain. T_cb is in block_1's lineage but NOT in block_1p's.
+    Action: build block_2p extending block_1p whose coinbase REPLAYS
+    T_cb; call chain_yp.validate_block_coinbase(block_2p).
+    Expected: no DuplicateCoinbaseError — T_cb is not in the Y fork's
+    lineage, so the chain-scoped get_transaction walk returns None.
+    """
+    with app.app_context():
+        now_dt = now()
+        when_dt = now_dt - datetime.timedelta(hours=1)
+        time_machine.move_to(when_dt)
+
+        # Canonical chain: g1 (genesis) -> block_1 (coinbase T_cb).
+        m = Miller(milling_wallet=wallet)
+        g1 = m.create_block()
+        m.mill_block(g1)
+        assert g1.block_hash is not None
+        when_dt += datetime.timedelta(minutes=1)
+        time_machine.move_to(when_dt)
+        block_1 = m.create_block()
+        m.mill_block(block_1)
+        t_cb = block_1.coinbase
+        assert t_cb is not None
+        assert t_cb.address == wallet.address
+
+        # Competing sibling fork: block_1p (idx 1, extends g1) with a
+        # DIFFERENT coinbase (miller_2_wallet). _hostile_block links to
+        # g1 at idx g1.idx+1 == 1, seals a fresh coinbase, and mills.
+        when_dt += datetime.timedelta(minutes=1)
+        time_machine.move_to(when_dt)
+        block_1p = _hostile_block(g1, miller_2_wallet)
+        assert block_1p.block_hash is not None
+        assert block_1p.block_hash != block_1.block_hash
+        assert block_1p.idx == 1
+
+        # Persist the sibling fork. Node.add_block's create_chain
+        # fallback fires because g1 is no longer a chain tip (block_1
+        # advanced the canonical chain), so block_1p lands as its own
+        # ChainDAO retrievable via Chain.from_db(block_hash=...).
+        #
+        # LIVE-ITERATION NOTE: depth-1 sibling-fork persistence is the
+        # one mechanically-tricky step in this test. The assertion below
+        # is the checkpoint — if chain_yp is None when you run it,
+        # block_1p did NOT persist as a retrievable parallel chain.
+        # Before adjusting the test, re-read Node.add_block (the
+        # create_chain fallback) and Chain.from_db(block_hash=...) to
+        # confirm how a depth-1 sibling lands a ChainDAO row. Do not
+        # weaken the cross-fork assertion to work around a setup issue.
+        m.receive_block(block_1p.to_json())
+        chain_yp = Chain.from_db(block_hash=block_1p.block_hash)
+        assert chain_yp is not None, (
+            'sibling fork block_1p did not persist as a retrievable '
+            'chain; cross-fork test setup needs adjustment (see '
+            'LIVE-ITERATION NOTE above)'
+        )
+
+        # Build block_2p extending block_1p whose coinbase REPLAYS T_cb.
+        when_dt += datetime.timedelta(minutes=1)
+        time_machine.move_to(when_dt)
+        t_cb_replayed = Transaction.from_json(t_cb.to_json())
+        assert t_cb_replayed.txid == t_cb.txid
+        b_2p = Block()
+        chain_yp.link_block(b_2p)
+        b_2p.add_txn(t_cb_replayed, is_coinbase=True)
+        b_2p.merkle_root = b_2p.get_merkle_root()
+        b_2p.timestamp = now_iso()
+        b_2p.mill()
+        assert b_2p.block_hash is not None
+
+        # The new duplicate-coinbase check must NOT reject this: T_cb is
+        # on the canonical fork (block_1), not in block_2p's Y-fork
+        # lineage (block_1p -> g1). get_transaction(t_cb.txid) on
+        # chain_yp returns None, so no DuplicateCoinbaseError. (Other
+        # validation passes too — block_reward is the constant REWARD,
+        # which T_cb's outflow already pays.)
+        try:
+            chain_yp.validate_block_coinbase(b_2p)
+        except DuplicateCoinbaseError:
+            pytest.fail(
+                'cross-fork coinbase replay was incorrectly rejected: '
+                'T_cb is on the canonical fork, not in the Y-fork lineage'
+            )
+```
+
+### Step 9: Verify the cross-fork test passes + the module counts update
+
+```bash
+uv run pytest tests/test_verification_audit.py::test_a4_c_cross_fork_coinbase_replay_accepted -v 2>&1 | tail -10
+```
+
+Expected: `1 passed`.
+
+If it errors at the `chain_yp is not None` assertion, the sibling-fork persistence didn't land — follow the LIVE-ITERATION NOTE in the test. If it fails at `pytest.fail(...)`, the new check is genuinely over-rejecting cross-fork replay — that is a real bug in the Task 4 fix (the walk is not chain-scoped as intended); re-inspect `Chain.get_transaction` / `BlockDAO.get_transaction_in_chain` before proceeding.
+
+Then re-check the whole audit module:
+
+```bash
+uv run pytest tests/test_verification_audit.py 2>&1 | tail -5
+```
+
+Expected: `3 passed, 4 xfailed` (A2.e + A4.c + the new cross-fork test pass; A1.f, A7.b, A7.e, A7.h xfail).
+
+```bash
+uv run pytest --runxfail tests/test_verification_audit.py 2>&1 | tail -5
+```
+
+Expected: `3 passed, 4 failed` (the 3 passing tests stay passing under --runxfail; the 4 xfail findings fail).
+
+```bash
+uv run ruff check tests/test_verification_audit.py
+uv run ruff format --check tests/test_verification_audit.py
+uv run mypy 2>&1 | tail -3
+```
+
+All exit 0. If `ruff format --check` reports a diff (likely on the new import line / test body), run `uv run ruff format tests/test_verification_audit.py`.
+
 ---
 
 ## Task 6: Update the audit doc to reflect A4.c closure
@@ -559,7 +720,7 @@ uv run mypy
 uv run pytest 2>&1 | tail -3
 ```
 
-All exit 0. Pytest shows `238 passed, 4 xfailed, 1 skipped`.
+All exit 0. Pytest shows `239 passed, 4 xfailed, 1 skipped`.
 
 ### Step 2: --runxfail verification
 
@@ -567,7 +728,7 @@ All exit 0. Pytest shows `238 passed, 4 xfailed, 1 skipped`.
 uv run pytest --runxfail tests/test_verification_audit.py 2>&1 | tail -5
 ```
 
-Expected: `2 passed, 4 failed`. A2.e + A4.c pass; remaining 4 audit findings (A1.f, A7.b, A7.e, A7.h) still demonstrate gaps.
+Expected: `3 passed, 4 failed`. A2.e + A4.c + the cross-fork non-regression test pass; remaining 4 audit findings (A1.f, A7.b, A7.e, A7.h) still demonstrate gaps.
 
 ### Step 3: DB check gate
 
@@ -610,7 +771,8 @@ fundamental issue first gives clearer error messages.
 
 Test went from @pytest.mark.xfail(strict=True) on
 test_a4_c_ii_coinbase_replay_inflates_balance to a real pass; full
-suite is 238 passed, 4 xfailed, 1 skipped. Audit doc Findings table
+suite is 239 passed, 4 xfailed, 1 skipped (A4.c un-xfailed +
+a new cross-fork non-regression test). Audit doc Findings table
 updated (4 findings remaining); ROADMAP A4.c entry moved from open
 to closed. With A4.c closed, audit severity reaches
 0 Critical / 0 High / 0 Medium / 4 Low.
@@ -669,8 +831,8 @@ A MILLER-role adversary can no longer mine a block whose coinbase is a verbatim 
 ## Test plan
 
 - [x] All 5 CI gates clean (ruff check + ruff format + pytest + mypy + db check).
-- [x] \`uv run pytest 2>&1 | tail -3\` shows \`238 passed, 4 xfailed, 1 skipped\` (was \`237 passed, 5 xfailed, 1 skipped\` pre-fix).
-- [x] \`uv run pytest --runxfail tests/test_verification_audit.py 2>&1 | tail -3\` shows \`2 passed, 4 failed\` (A2.e + A4.c pass; remaining 4 findings still demonstrate gaps).
+- [x] \`uv run pytest 2>&1 | tail -3\` shows \`239 passed, 4 xfailed, 1 skipped\` (was \`237 passed, 5 xfailed, 1 skipped\` pre-fix; +1 A4.c un-xfailed, +1 new cross-fork non-regression test).
+- [x] \`uv run pytest --runxfail tests/test_verification_audit.py 2>&1 | tail -3\` shows \`3 passed, 4 failed\` (A2.e + A4.c + cross-fork test pass; remaining 4 findings still demonstrate gaps).
 - [ ] CI green on 3.12 and 3.13.
 - [ ] Docker builder build (\`docker build --target builder -t cc-a4c-final .\`) succeeds.
 
@@ -752,7 +914,7 @@ Expected: the 5 lines preceding the `def` are no longer `@pytest.mark.xfail(...)
 uv run pytest 2>&1 | tail -3
 ```
 
-Expected: `238 passed, 4 xfailed, 1 skipped`.
+Expected: `239 passed, 4 xfailed, 1 skipped`.
 
 - [ ] **Step 5: `--runxfail` confirms remaining findings still demonstrate gaps**
 
@@ -760,7 +922,7 @@ Expected: `238 passed, 4 xfailed, 1 skipped`.
 uv run pytest --runxfail tests/test_verification_audit.py 2>&1 | tail -5
 ```
 
-Expected: `2 passed, 4 failed`.
+Expected: `3 passed, 4 failed` (A2.e + A4.c + cross-fork test pass; the 4 remaining findings fail).
 
 - [ ] **Step 6: Hard CI gates pass**
 
