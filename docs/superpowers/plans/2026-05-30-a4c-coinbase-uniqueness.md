@@ -36,12 +36,12 @@ The companion design spec is `docs/superpowers/specs/2026-05-30-a4c-coinbase-uni
 | 3 | impl PR | `src/cancelchain/exceptions.py` — add `DuplicateCoinbaseError(InvalidCoinbaseError)` |
 | 4 | impl PR | `src/cancelchain/chain.py` — `Chain.validate_block_coinbase` gains the uniqueness check |
 | 5 | impl PR | `tests/test_verification_audit.py` — remove xfail decorator |
-| 6 | impl PR | `docs/superpowers/audits/2026-05-29-verification-pipeline-audit.md` — close A4.c in 3 spots |
+| 6 | impl PR | `docs/superpowers/audits/2026-05-29-verification-pipeline-audit.md` — close A4.c in 4 spots (Findings table, Attack c.ii run, Executive summary, Recommendations §2) |
 | 7 | impl PR | `docs/superpowers/ROADMAP.md` — move A4.c to closed |
 | 8 | impl PR | run gates + single commit + push + open PR |
 | 9 | acceptance | none (verification only) |
 
-The impl PR lands as two commits: one main commit covering the fix + housekeeping (Tasks 3-7), and a small follow-up commit that fills in the PR numbers in the ROADMAP closed entry once the PR is open (Task 8 Step 7 — the impl PR number isn't known until `gh pr create` returns). Do not amend or squash locally; cancelchain convention is additive commits. No new files; all 6 modified files are existing.
+The impl PR lands as two commits: one main commit covering the fix + housekeeping (Tasks 3-7), and a small follow-up commit that fills in the PR numbers in the ROADMAP closed entry once the PR is open (Task 8 Step 7 — the impl PR number isn't known until `gh pr create` returns). Do not amend or squash locally; cancelchain convention is additive commits. No new files; all 5 modified files are existing (`exceptions.py`, `chain.py`, `tests/test_verification_audit.py`, the audit doc, and ROADMAP).
 
 ---
 
@@ -664,12 +664,16 @@ Delete the entire row.
 
 ### Step 2: Update §Adversary 4 → Attack c.ii outcome
 
-Find the `**Outcome:** ACCEPTED at step 4` line in §Adversary 4 → Attack c.ii (around audit doc line 596). Replace the entire block starting with `**Outcome:** ACCEPTED at step 4` and continuing through `**Demonstration test:** test_a4_c_ii_coinbase_replay_inflates_balance in tests/test_verification_audit.py.` with:
+Find the `**Outcome:** ACCEPTED at step 4` line in §Adversary 4 → Attack c.ii (around audit doc line 596). Replace the **entire contiguous run** from that `**Outcome:**` line (~596) through the `**Demonstration test:**` line (~606) **inclusive** with the block below. This run currently contains six paragraphs — `**Outcome:**` (ACCEPTED), the `**Consequence — longest-chain balance inflation**` paragraph, the schema-layer paragraph ending with the stale "A `Chain.get_transaction(cb.txid, start_block=block)` check ... would close the gap" sentence, `**Finding A4.c — Severity Medium:**`, `**Remediation sketch:**` (the rejected `start_block=block` + m2m self-exclusion guidance), and `**Demonstration test:**`. ALL of them are replaced (the stale `start_block=block` guidance lives in both the schema-layer paragraph and the Remediation sketch, so replacing the whole run removes every copy in one edit):
 
 ```markdown
-**Outcome:** REJECTED at the new chain-lineage check inside `Chain.validate_block_coinbase`. Before computing the reward, the method now derives the candidate's parent (`parent = Block.from_db(block.prev_hash)`) and calls `self.get_transaction(cb.txid, start_block=parent)`, walking the parent's lineage backward via `Block.from_db(prev_hash)` and the per-block recursive CTE in `BlockDAO.get_transaction_in_chain`. Starting from the parent (rather than `self.last_block`) keeps the candidate block itself out of the walk, so `Chain.validate()` full-chain revalidation is unaffected. If the txid is found in this chain's lineage, `DuplicateCoinbaseError(InvalidCoinbaseError)` is raised. Cross-fork legitimacy (Attack b's case) is preserved because the walk is chain-scoped. Fixed by the impl PR following from `docs/superpowers/specs/2026-05-30-a4c-coinbase-uniqueness-design.md`.
+**Outcome:** REJECTED at the new chain-lineage check inside `Chain.validate_block_coinbase`. Before computing the reward, the method now derives the candidate's parent (`parent = Block.from_db(block.prev_hash)`) and calls `self.get_transaction(cb.txid, start_block=parent)`, walking the parent's lineage backward via `Block.from_db(prev_hash)` and the per-block recursive CTE in `BlockDAO.get_transaction_in_chain`. Starting from the parent (rather than `self.last_block`) keeps the candidate block itself out of the walk, so `Chain.validate()` full-chain revalidation is unaffected. If the txid is found in the candidate's lineage, `DuplicateCoinbaseError(InvalidCoinbaseError)` is raised. Cross-fork legitimacy (Attack b's case) is preserved because the walk is chain-scoped. Fixed by the impl PR following from `docs/superpowers/specs/2026-05-30-a4c-coinbase-uniqueness-design.md`.
+
+**Pre-remediation gap (historical record).** Before the fix, the replayed coinbase persisted with a duplicate `block_transactions` m2m row, so `BlockDAO.longest_chain_transactions_q`'s join produced two rows for the coinbase and `ChainDAO.wallet_balance` inflated the original miller's reported balance by one REWARD per replay. The `InflowDAO` `(txid, idx)` unique constraint kept the inflated balance unspendable, but the accounting-query layer reported a no-double-counting violation. The root cause was that `Chain.validate_block_coinbase` enforced only the REWARD amount and S/G/M shape, never coinbase-txid freshness — now closed by the lineage-scoped check above.
 
 **Result:** Validation correctly rejects (post-remediation). No finding.
+
+**Demonstration test:** `test_a4_c_ii_coinbase_replay_inflates_balance` in `tests/test_verification_audit.py` (now passing post-fix); `test_a4_c_cross_fork_coinbase_replay_accepted` guards the cross-fork non-regression.
 ```
 
 ### Step 3: Update the Executive summary count
@@ -698,17 +702,17 @@ That `start_block=block` + m2m-self-exclusion sketch is the audit's original ide
 Closed by the A4.c remediation impl PR. The implemented fix computes the candidate block's parent (`parent = Block.from_db(block.prev_hash)`) and calls `self.get_transaction(cb.txid, start_block=parent)`; if the lookup returns non-None, it raises a new `DuplicateCoinbaseError(InvalidCoinbaseError)` (defined in `src/cancelchain/exceptions.py`). Starting the walk from the parent — rather than from `block` itself, as this audit's original sketch proposed — keeps the candidate out of the walk, so no m2m self-exclusion caveat is needed and `Chain.validate()` full-chain revalidation is unaffected. The lookup is lineage-scoped (per-block recursive CTE), so legitimate cross-fork coinbase replay (the A4.b case) is preserved. Acceptance signal: `test_a4_c_ii_coinbase_replay_inflates_balance` flips from xfail to pass; `test_a4_c_cross_fork_coinbase_replay_accepted` guards the cross-fork non-regression.
 ```
 
-Also update the single forward-looking sketch sentence embedded in the §Adversary 4 → Attack c.ii **consequence paragraph** (search for `A \`Chain.get_transaction(cb.txid, start_block=block)\` check in \`validate_block_coinbase\``, around audit doc line 600). Change `start_block=block` to `start_block=Block.from_db(block.prev_hash)` so the historical trace's "would close the gap" note matches the shipped design. (The rest of that forensic paragraph — how the gap works — is historical record and stays as-is.)
+Note: the stale `start_block=block` sketch sentence that used to live in the §Adversary 4 → Attack c.ii consequence/schema paragraph is already removed by Step 2 (which replaces the whole `**Outcome:**`-through-`**Demonstration test:**` run), so it needs no separate edit here. The only remaining stale A4.c coinbase recommendation is the one in the Recommendations section handled above.
 
 ### Step 5: Verify structural counts
 
 ```bash
 grep -c '^| A[1-7]\.' docs/superpowers/audits/2026-05-29-verification-pipeline-audit.md
 grep -c '^\*\*Finding A' docs/superpowers/audits/2026-05-29-verification-pipeline-audit.md
-grep -c 'start_block=block)' docs/superpowers/audits/2026-05-29-verification-pipeline-audit.md
+grep -n 'start_block=block)' docs/superpowers/audits/2026-05-29-verification-pipeline-audit.md
 ```
 
-Expected: Findings table = 4; Finding entries = 4 (was 5 post-A2.e; A4.c removal brings it to 4). The `start_block=block)` count should be only the legitimate inflow-check references in the Adversary 4 trace (e.g. `get_transaction(i.outflow_txid, start_block=block)` for inflow validation, which is correct and unrelated to A4.c) — verify no remaining A4.c coinbase recommendation still says `start_block=block`.
+Expected: Findings table = 4; Finding entries = 4 (was 5 post-A2.e; A4.c removal brings it to 4). The `start_block=block)` matches should be ONLY the legitimate inflow-check references in the Adversary trace sections (e.g. `get_transaction(i.outflow_txid, start_block=block)` for inflow validation — correct and unrelated to A4.c coinbase uniqueness). Manually confirm none of the remaining matches is an A4.c *coinbase* recommendation (`get_transaction(cb.txid, start_block=block)`); if one survives, it was missed by Step 2 or Step 4 — fix it before committing.
 
 ---
 
@@ -745,7 +749,7 @@ Expected: `^## ` = 6 (Phase 6.7, Phase 7+ ×2, Audit remediation, Future audit, 
 
 ## Task 8: Pre-commit gates + commit + push + open impl PR
 
-**Files:** all 6 modified files from Tasks 3-7 (`exceptions.py`, `chain.py`, `test_verification_audit.py`, audit doc, ROADMAP).
+**Files:** all 5 modified files from Tasks 3-7 (`exceptions.py`, `chain.py`, `test_verification_audit.py`, audit doc, ROADMAP).
 
 ### Step 1: Full gate sweep
 
