@@ -1,23 +1,31 @@
-"""Demonstration tests for the verification pipeline threat-modeled audit.
+"""Demonstration and regression tests for the verification pipeline audit.
 
-Each test in this module corresponds to one finding in
+Each finding in
 docs/superpowers/audits/2026-05-29-verification-pipeline-audit.md
-and is marked @pytest.mark.xfail(strict=True). The xfail demonstrates that
-the documented gap exists today; strict=True means that if the test starts
-unexpectedly passing (because remediation has been applied), CI fails,
-forcing the remediation PR to remove the marker.
+has a corresponding test here, in one of two states:
 
-To verify each xfail genuinely demonstrates a gap (rather than failing for
-an unrelated reason), run:
+- **Open findings** carry `@pytest.mark.xfail(strict=True)`: the xfail
+  demonstrates the gap still exists; strict=True means that if the test
+  starts unexpectedly passing (because remediation landed), CI fails,
+  forcing the remediation PR to remove the marker.
+- **Remediated findings** have had the xfail decorator removed and now
+  pass as plain regression tests guarding the fix (e.g. A2.e, A4.c).
+
+The module may also hold non-regression / invariant tests that assert a
+fix's intended behavior — e.g. test_a4_c_coinbase_block_binding, which
+checks coinbases are bound to their block via prev_hash.
+
+To verify a still-xfailed test genuinely demonstrates a gap (rather than
+failing for an unrelated reason), run:
 
     uv run pytest --runxfail tests/test_verification_audit.py
 
-That runs the xfail tests as if they were unmarked, surfacing the actual
-failure mode.
+That runs the xfail tests as if unmarked, surfacing the actual failure
+mode; the already-remediated tests pass under it too.
 
-Finding IDs are referenced in each test's docstring and xfail reason string
-in the form A<N>.<letter> matching the audit document's per-adversary
-sections.
+Finding IDs are referenced in each test's docstring (and, for still-open
+findings, the xfail reason string) in the form A<N>.<letter> matching the
+audit document's per-adversary sections.
 """
 
 import datetime
@@ -32,6 +40,7 @@ from cancelchain.exceptions import (
     InvalidBlockError,
     InvalidCoinbaseError,
     InvalidTransactionError,
+    MismatchedCoinbaseError,
 )
 from cancelchain.miller import Miller
 from cancelchain.models import ChainDAO
@@ -236,46 +245,24 @@ def test_a2_e_partial_chain_adoption_via_invalid_tip(
         assert post_chain.block_hash == local_genesis_hash
 
 
-@pytest.mark.xfail(
-    reason=(
-        'Audit finding A4.c — severity Medium — Chain.validate_block_coinbase '
-        'enforces only the REWARD amount and S/G/M shape; it does not check '
-        "that the coinbase's txid is fresh (not already persisted in the "
-        "chain's lineage). A MILLER-role adversary can mine a block whose "
-        'coinbase is a verbatim replay of any prior block coinbase, '
-        'appending a duplicate block_transactions m2m row that inflates the '
-        "original miller's longest-chain wallet_balance by one REWARD per "
-        'replay (the InflowDAO unique(txid, idx) still prevents the inflated '
-        'balance from being directly spendable, but the accounting query '
-        'layer reports the wrong number). See '
-        'docs/superpowers/audits/2026-05-29-verification-pipeline-audit.md'
-    ),
-    strict=True,
-)
 def test_a4_c_ii_coinbase_replay_inflates_balance(
     app, time_machine, wallet
 ) -> None:
     """A4.c.ii: replaying another miller's coinbase in a fresh block.
 
     Pre-state: Local chain has a single mined block B_orig whose coinbase
-    T_cb pays the milling wallet REWARD. T_cb is in TransactionDAO and
-    m2m-associated with B_orig.
-    Attack: The adversary (acting as a MILLER) builds B_adv extending
-    B_orig with txns=[T_cb] only (T_cb in the last position so
-    Block.regular_txns is empty and the coinbase-positional rule
-    identifies T_cb as B_adv's coinbase). They mill PoW honestly and
-    invoke Node.receive_block on the constructed block. Today
-    Chain.validate_block_coinbase passes (correct REWARD amount, empty
-    S/G/M comps match T_cb's single-outflow shape), so B_adv is persisted
-    with a new block_transactions m2m row.
-    Expected after remediation: Chain.validate_block_coinbase raises
-    InvalidCoinbaseError (e.g., via a new DuplicateCoinbaseError) when
-    the candidate coinbase's txid is already persisted in the chain's
-    lineage — analogous to the inflow-uniqueness check already enforced
-    by Chain.validate_txn_inflow via get_inflows_count.
-    Observed today: receive_block succeeds; T_cb is m2m'd with both
-    B_orig and B_adv, so the longest_chain_outflows_q join produces two
-    rows of T_cb's REWARD outflow and wallet_balance double-counts.
+    T_cb is bound (via prev_hash) to B_orig's parent and pays the milling
+    wallet REWARD.
+    Attack: The adversary (MILLER) builds B_adv extending B_orig with
+    txns=[T_cb] only, reusing T_cb verbatim as B_adv's coinbase, mills
+    PoW, and invokes Node.receive_block.
+    Behavior (post-remediation, verified by this test): T_cb's bound
+    prev_hash is B_orig's parent, but B_adv.prev_hash is B_orig's hash.
+    Chain.validate_block_coinbase raises MismatchedCoinbaseError (a
+    subclass of InvalidCoinbaseError) on the binding mismatch;
+    receive_block propagates the failure and B_adv is not persisted. The
+    coinbase is intrinsically block-bound, so it cannot be replayed onto
+    any other block-position.
     """
     with app.app_context():
         # Pre-state: mine B_orig with our wallet as the milling wallet, so
@@ -572,3 +559,53 @@ def test_a7_h_non_printable_subject_accepted(app, time_machine, wallet) -> None:
         # pending.
         with pytest.raises(InvalidTransactionError):
             m.receive_transaction(t.txid, t.to_json())
+
+
+def test_a4_c_coinbase_block_binding(app, time_machine, wallet) -> None:
+    """A4.c v2: coinbases are bound to their block via prev_hash.
+
+    Verifies the two halves of the fix:
+    1. Two consecutive legitimate blocks (same wallet, same second under
+       easy-mill) have DIFFERENT coinbase txids, because each coinbase's
+       prev_hash differs (block N+1 extends block N). This is the
+       root-cause fix for the read-side balance inflation.
+    2. validate_block_coinbase raises MismatchedCoinbaseError when a
+       coinbase's bound prev_hash does not equal its block's prev_hash.
+    """
+    with app.app_context():
+        now_dt = now()
+        when_dt = now_dt - datetime.timedelta(hours=1)
+        time_machine.move_to(when_dt)
+        m = Miller(milling_wallet=wallet)
+        # Two consecutive blocks, no time advance (same wall-clock second).
+        b0 = m.create_block()
+        m.mill_block(b0)
+        b1 = m.create_block()
+        m.mill_block(b1)
+        cb0 = b0.coinbase
+        cb1 = b1.coinbase
+        assert cb0 is not None
+        assert cb1 is not None
+        # Part 1: distinct coinbase txids despite same wallet/second/reward.
+        assert cb0.txid != cb1.txid
+        # And each coinbase is bound to its own block's parent.
+        assert cb0.prev_hash == b0.prev_hash
+        assert cb1.prev_hash == b1.prev_hash
+
+        # Part 2: a coinbase whose binding mismatches its block is rejected.
+        chain = m.longest_chain
+        assert chain is not None
+        # b_mismatch is a NEW block linked off the current tip (b1), so
+        # chain.link_block sets b_mismatch.prev_hash = b1.block_hash. We
+        # place cb0 (bound to b0.prev_hash, i.e. GENESIS_HASH) as its
+        # coinbase. cb0.prev_hash (GENESIS_HASH) != b_mismatch.prev_hash
+        # (b1.block_hash) → binding mismatch → MismatchedCoinbaseError.
+        b_mismatch = Block()
+        chain.link_block(b_mismatch)
+        cb0_replay = Transaction.from_json(cb0.to_json())
+        b_mismatch.add_txn(cb0_replay, is_coinbase=True)
+        b_mismatch.merkle_root = b_mismatch.get_merkle_root()
+        b_mismatch.timestamp = now_iso()
+        b_mismatch.mill()
+        with pytest.raises(MismatchedCoinbaseError):
+            chain.validate_block_coinbase(b_mismatch)

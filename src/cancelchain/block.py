@@ -206,8 +206,15 @@ class Block:
         self.txns.append(txn)
 
     def create_coinbase(self, wallet: Wallet, reward: int) -> Transaction:
+        if self.prev_hash is None:
+            raise UnlinkedBlockError()
         return Transaction.coinbase(
-            wallet, reward, self.schadenfreude, self.grace, self.mudita
+            wallet,
+            reward,
+            self.schadenfreude,
+            self.grace,
+            self.mudita,
+            prev_hash=self.prev_hash,
         )
 
     def add_coinbase(self, wallet: Wallet, reward: int) -> None:

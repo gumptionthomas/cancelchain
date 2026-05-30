@@ -24,6 +24,7 @@ from cancelchain.exceptions import (
     InvalidInflowOutflowError,
     InvalidPreviousHashError,
     InvalidTargetError,
+    MismatchedCoinbaseError,
     MissingInflowOutflowError,
     MissingPreviousBlockError,
     OutOfOrderBlockError,
@@ -280,6 +281,14 @@ class Chain:
         reward = self.block_reward(block)
         cb = block.coinbase
         if cb is not None:
+            # A4.c v2: a coinbase is bound to the block it rewards via its
+            # prev_hash (which is part of the coinbase's hashed txid). A
+            # replay carries the wrong parent; reject on the mismatch. This
+            # is a purely local check — no lineage walk, no self.last_block
+            # dependence — so it is correct in both the add-block path and
+            # Chain.validate() full-chain revalidation.
+            if cb.prev_hash != block.prev_hash:
+                raise MismatchedCoinbaseError()
             outflow = cb.get_outflow(0)
             if outflow is not None and outflow.amount != reward:
                 raise InvalidCoinbaseErrorRewardError()

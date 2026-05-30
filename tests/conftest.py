@@ -11,7 +11,7 @@ import pytest
 from cancelchain import create_app
 from cancelchain.application import create_clients
 from cancelchain.block import Block
-from cancelchain.chain import REWARD, Chain
+from cancelchain.chain import GENESIS_HASH, REWARD, Chain
 from cancelchain.database import db
 from cancelchain.miller import Miller
 from cancelchain.payload import Inflow, Outflow, encode_subject
@@ -277,7 +277,7 @@ def invalid_txn(wallet):
     ]
 )
 def valid_coinbase_txn(request, wallet):
-    return Transaction.coinbase(wallet, *request.param)
+    return Transaction.coinbase(wallet, *request.param, prev_hash=GENESIS_HASH)
 
 
 @pytest.fixture()

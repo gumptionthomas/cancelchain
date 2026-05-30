@@ -1,8 +1,8 @@
 """initial schema
 
-Revision ID: 0ca0de5fb211
+Revision ID: cc6afda9f01b
 Revises:
-Create Date: 2026-05-28 19:07:30.627355
+Create Date: 2026-05-30 14:14:13.615983
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = '0ca0de5fb211'
+revision = 'cc6afda9f01b'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -74,6 +74,7 @@ def upgrade():
     sa.Column('address', sa.String(length=100), nullable=True),
     sa.Column('public_key', sa.String(length=500), nullable=True),
     sa.Column('signature', sa.String(length=500), nullable=True),
+    sa.Column('prev_hash', sa.String(length=100), nullable=True),
     sa.PrimaryKeyConstraint('id', name=op.f('pk_transaction'))
     )
     with op.batch_alter_table('transaction', schema=None) as batch_op:

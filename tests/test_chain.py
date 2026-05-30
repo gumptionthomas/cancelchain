@@ -25,6 +25,7 @@ from cancelchain.exceptions import (
     OutOfOrderBlockError,
     SpentTransactionError,
 )
+from cancelchain.milling import mill_hash_str
 from cancelchain.payload import Inflow, Outflow
 from cancelchain.transaction import Transaction
 from cancelchain.util import now, now_iso
@@ -60,7 +61,13 @@ def test_invalid_prev_hash(app, wallet):
         block = Block()
         block.idx = 0
         chain.link_block(block)
-        block.prev_hash = 'foo'
+        # A well-formed mill hash that is neither GENESIS_HASH nor a real
+        # block: validate_block rejects it as an unknown parent
+        # (InvalidPreviousHashError). A malformed value like 'foo' would
+        # now be rejected earlier by the coinbase prev_hash binding
+        # (CoinbaseTransactionModel) at seal() time, which is a different
+        # check than the add_block prev_hash validation under test here.
+        block.prev_hash = mill_hash_str('foo')
         block.seal(wallet, chain.block_reward(block))
         block.mill()
         with pytest.raises(InvalidBlockError):
@@ -559,7 +566,7 @@ def test_validate_block_coinbase(add_chain_block, app, subject, txid, wallet):
         block2 = Block()
         chain.link_block(block2)
         block2.add_txn(t)
-        cb2 = Transaction()
+        cb2 = Transaction(prev_hash=block2.prev_hash)
         cb2.add_outflow(
             Outflow(amount=chain.block_reward(), address=wallet.address)
         )
@@ -592,7 +599,7 @@ def test_validate_block_coinbase(add_chain_block, app, subject, txid, wallet):
         block3 = Block()
         chain.link_block(block3)
         block3.add_txn(t2)
-        cb3 = Transaction()
+        cb3 = Transaction(prev_hash=block3.prev_hash)
         cb3.add_outflow(
             Outflow(amount=chain.block_reward(), address=wallet.address)
         )
