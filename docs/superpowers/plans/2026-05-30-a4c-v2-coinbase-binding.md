@@ -15,7 +15,7 @@
 - Working directory: cancelchain repo root.
 - A4.c v1 docs merged. `git log --oneline -1 main` shows `d49bf29 docs(a4c): coinbase-txid uniqueness check design + plan (#88)` (the superseded v1).
 - The v2 design spec is committed on `docs/a4c-v2-coinbase-binding` (`7ea2704`). This plan adds a second commit on that branch and ships both as the docs PR.
-- Test baseline on main: **237 passed, 5 xfailed, 1 skipped**.
+- Test baseline on main: **237 passed, 5 xfailed, 1 skipped** — **but only when pytest runs with a wide terminal.** `tests/test_command.py::test_create_wallet` is terminal-width-dependent: with a narrow `COLUMNS` the CLI wraps the wallet filename and embeds a newline that `result.output.strip()` does not remove, raising `FileNotFoundError`. It is a pre-existing bug on `main`, **unrelated to A4.c** (CI passes because GitHub Actions' non-TTY width is wide enough). **Run every `pytest` command in this plan with `COLUMNS=200`** (e.g. `COLUMNS=200 uv run pytest ...`) so the baseline is the clean `237 passed`. Do NOT fix `test_create_wallet` here (no scope creep — it warrants its own PR); just make the gate robust with `COLUMNS=200`.
 - CI gates: `ruff check`, `ruff format --check`, `pytest`, `mypy`, `cancelchain db upgrade` + `cancelchain db check`.
 - Never push to main. wor + mwg handled by the controller.
 
@@ -34,7 +34,7 @@
 | 7 | impl PR | `src/cancelchain/block.py` — thread `self.prev_hash` into `create_coinbase` |
 | 7b | impl PR | `tests/conftest.py`, `tests/test_transaction.py`, `tests/test_chain.py` — update direct + bare-`Transaction()` coinbase callers to pass `prev_hash`; add the regular-txn `data_csv` regression test |
 | 8 | impl PR | `src/cancelchain/chain.py` — binding check in `validate_block_coinbase` |
-| 9 | impl PR | `tests/test_verification_audit.py` — un-xfail A4.c, invert cross-fork test, module docstring |
+| 9 | impl PR | `tests/test_verification_audit.py` — un-xfail A4.c, add the v2 binding test (no v1 cross-fork test exists to invert), module docstring |
 | 10 | impl PR | audit doc + ROADMAP + v1 supersession banners |
 | 11 | impl PR | gates + commit + push + open PR |
 | 12 | acceptance | none |
@@ -104,10 +104,10 @@ EOF
 ```bash
 git checkout main && git pull --ff-only
 git checkout -b fix/a4c-v2-coinbase-binding
-uv run mypy && uv run ruff check src tests && uv run pytest 2>&1 | tail -3
+uv run mypy && uv run ruff check src tests && COLUMNS=200 uv run pytest 2>&1 | tail -3
 ```
 
-Expected: clean mypy/ruff; pytest `237 passed, 5 xfailed, 1 skipped`. If not, STOP / BLOCKED.
+Expected: clean mypy/ruff; pytest `237 passed, 5 xfailed, 1 skipped`. **The `COLUMNS=200` is required** — without it `test_create_wallet` fails on a narrow terminal (pre-existing, unrelated; see Prerequisites). If you still see a failure OTHER than `test_create_wallet`, STOP / BLOCKED.
 
 - [ ] **Step 2:** Confirm the A4.c test is currently xfail:
 
@@ -859,7 +859,7 @@ All clean.
 - [ ] **Step 4: Full suite — the 17 v1-breaking scenarios now pass**
 
 ```bash
-uv run pytest 2>&1 | tail -3
+COLUMNS=200 uv run pytest 2>&1 | tail -3
 ```
 
 At this point Task 7b has already added `test_regular_txn_data_csv_excludes_prev_hash` (a passing test), so the passed count is baseline 237 **+1 = 238**. The A4.c demonstration test is still decorated but the fix makes it XPASS(strict) — counted as `1 failed`. So a plain run shows `238 passed, 4 xfailed, 1 failed (A4.c XPASS), 1 skipped`. The XPASS is expected (the fix works; Task 9 removes the decorator). Crucially: NO OTHER failures — the legitimate-consecutive-block tests (`test_chain`, `test_models`, `test_miller`, `test_command`) all pass because coinbases are now unique per block.
@@ -913,9 +913,9 @@ Replace the docstring's pre-fix "Expected after remediation / Observed today" wo
     """
 ```
 
-- [ ] **Step 4: Invert the cross-fork test**
+- [ ] **Step 4: Add the v2 binding test (there is no v1 cross-fork test to invert)**
 
-The v1 cross-fork test (`test_a4_c_cross_fork_coinbase_replay_accepted`) was never added to main (it lived only in the v1 plan, which shipped docs-only and v1 was BLOCKED before impl). **Confirm it does not exist:**
+The v1 cross-fork test (`test_a4_c_cross_fork_coinbase_replay_accepted`) was never added to main (it lived only in the v1 plan, which shipped docs-only and v1 was BLOCKED before impl). So this step is a pure ADDITION, not a mutation of an existing test — v2 *inverts v1's premise* (coinbases are block-bound, so cross-fork replay onto a different-parent block is rejected), but there is no test artifact to invert. **Confirm no such test exists:**
 
 ```bash
 grep -n 'cross_fork' tests/test_verification_audit.py
@@ -1074,7 +1074,7 @@ Prepend to the TOP of both `docs/superpowers/specs/2026-05-30-a4c-coinbase-uniqu
 uv run ruff check src tests
 uv run ruff format --check src tests
 uv run mypy
-uv run pytest 2>&1 | tail -3
+COLUMNS=200 uv run pytest 2>&1 | tail -3
 ```
 
 All exit 0. Pytest shows `240 passed, 4 xfailed, 1 skipped` (was 237+5; A4.c un-xfailed +1, the audit binding test +1, the regular-txn data_csv regression test +1).
@@ -1199,7 +1199,7 @@ grep -n "prev_hash" src/cancelchain/models.py
 # Migration includes the column
 grep -rn "prev_hash" src/cancelchain/migrations/versions/
 # Tests
-uv run pytest 2>&1 | tail -3                              # 240 passed, 4 xfailed, 1 skipped
+COLUMNS=200 uv run pytest 2>&1 | tail -3                              # 240 passed, 4 xfailed, 1 skipped
 uv run pytest --runxfail tests/test_verification_audit.py 2>&1 | tail -3   # 3 passed, 4 failed
 # Gates
 uv run ruff check src tests && uv run ruff format --check src tests && uv run mypy
