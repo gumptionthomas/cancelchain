@@ -149,17 +149,19 @@ Add a test (e.g. `test_a7_j_disjoint_genesis_reorg_rejected`) that:
    admitted, would be longer than the canonical chain and would trigger the
    catastrophic-rebuild reorg.
 3. Submits the fork's **root** g2 directly via `m1.receive_block(g2.to_json())`
-   and asserts it is rejected with `InvalidBlockError` (`DuplicateGenesisError`).
-   Because g2 is the parent every block in the fork depends on, its rejection
-   makes the entire longer fork unrootable: b2 can never be applied (its
-   `prev_hash` resolves to no persisted block). Asserts the canonical tip is
-   unchanged and the `ChainDAO` count stays 1.
+   and asserts it is rejected with `DuplicateGenesisError`. Then submits b2
+   and asserts it is rejected with `MissingBlockError` — because g2 was never
+   admitted, b2's parent resolves to no persisted block, so the longer fork
+   is unrootable. (`Node.receive_block` raises `MissingBlockError` locally on
+   a missing parent; no peer fill is attempted, keeping the test
+   self-contained.) Asserts the canonical tip is unchanged and the `ChainDAO`
+   count stays 1.
 
 This proves closing A7.b closes A7.j: a longer disjoint fork cannot displace
-the canonical chain because its root genesis is rejected at admission.
-Submitting g2 directly (rather than relying on a peer `fill_chain` walk) keeps
-the test self-contained and independent of peer-proxy wiring, while still
-exercising the exact gate that blocks the reorg.
+the canonical chain because its root genesis is rejected at admission, and its
+descendants are unrootable. Submitting g2 and b2 directly (rather than relying
+on a peer `fill_chain` walk) keeps the test self-contained and independent of
+peer-proxy wiring, while still exercising the exact gates that block the reorg.
 
 **Docstring counts.** Update the `tests/test_verification_audit.py` module
 docstring to reflect A7.b moving from open to remediated.

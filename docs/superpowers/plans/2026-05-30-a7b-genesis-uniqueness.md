@@ -200,6 +200,7 @@ from cancelchain.exceptions import (
     InvalidCoinbaseError,
     InvalidTransactionError,
     MismatchedCoinbaseError,
+    MissingBlockError,
 )
 ```
 
@@ -218,8 +219,10 @@ def test_a7_j_disjoint_genesis_reorg_rejected(
     catastrophic-rebuild branch is correct PoW longest-chain behavior. The
     gap is the alternate-genesis admission (A7.b). This test proves closing
     A7.b closes A7.j: even a LONGER fork (g2 + child b2, length 2 vs the
-    canonical length 1) cannot win, because its root genesis g2 is rejected,
-    making b2 unrootable. The reorg never completes.
+    canonical length 1) cannot win. Its root genesis g2 is rejected
+    (DuplicateGenesisError), and its child b2 is then unrootable — submitting
+    b2 raises MissingBlockError because its parent g2 was never admitted. The
+    reorg never completes.
     """
     with app.app_context():
 
@@ -261,10 +264,14 @@ def test_a7_j_disjoint_genesis_reorg_rejected(
         assert b2.idx == 1
         assert b2.prev_hash == g2.block_hash
 
-        # The fork's root g2 is rejected at admission, so the whole longer
-        # fork is unrootable and the reorg can never trigger.
+        # The fork's root g2 is rejected at admission.
         with pytest.raises(DuplicateGenesisError):
             m1.receive_block(g2.to_json())
+        # b2 is therefore unrootable: its parent g2 was never persisted, so
+        # receive_block rejects it locally with MissingBlockError (no peer
+        # fill is attempted). The longer fork can never be assembled.
+        with pytest.raises(MissingBlockError):
+            m1.receive_block(b2.to_json())
 
         # Canonical chain unchanged; registry still single.
         post_chain = ChainDAO.longest()
@@ -386,5 +393,5 @@ Expected: empty — this change adds no migration.
 
 - **Do not** import `GENESIS_HASH` into `block.py` (circular import). The helper keys on `idx == 0`, which is equivalent to genesis by the `idx == prev_index + 1` invariant.
 - **Idempotency is load-bearing.** The `existing_genesis.block_hash != block.block_hash` guard is what keeps `Chain.validate()` full-chain revalidation green (revalidating the canonical genesis compares it against itself). Do not simplify it to a bare "a genesis already exists → raise".
-- Keep the A7.j test self-contained (submit `g2` directly); do not wire a peer `fill_chain` walk — the point is that g2's rejection makes the longer fork unrootable.
+- Keep the A7.j test self-contained: submit `g2` then `b2` directly via `receive_block`. Both raise locally (`DuplicateGenesisError`, then `MissingBlockError`) — `receive_block` raises `MissingBlockError` on a missing parent without attempting a peer `fill_chain` walk (`node.py:160-165`). Do not wire a peer proxy. The point is that g2's rejection makes the longer fork unrootable, which b2's `MissingBlockError` concretely demonstrates.
 - This is a fix PR: no adjacent refactors. The pre-existing `test_create_wallet` terminal-width bug is out of scope (separate PR).
