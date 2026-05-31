@@ -325,19 +325,19 @@ def test_a4_c_ii_coinbase_replay_inflates_balance(
 def test_a7_b_alternate_genesis_fragments_chain_registry(
     app, time_machine, wallet, miller_2_wallet
 ) -> None:
-    """A7.b: alternate genesis blocks are admitted, creating sibling chains.
+    """A7.b: an alternate genesis block is rejected (regression test).
 
     Pre-state: Empty BlockDAO. The first mined block becomes the canonical
     genesis (block_hash=G1, paying `wallet`).
     Attack: Mine a second block with prev_hash=GENESIS_HASH, idx=0, and a
     coinbase paying a different miller wallet (miller_2_wallet) at a
     different timestamp, yielding a block_hash G2 != G1.
-    Expected after remediation: receive_block rejects the second genesis
-    with InvalidBlockError (e.g., a new DuplicateGenesisError); the
-    ChainDAO registry stays at one row.
-    Observed today: receive_block accepts G2, Node.add_block's
-    create_chain fallback (node.py:187) builds a fresh Chain instance,
-    and a second ChainDAO row is committed pointing at G2 alongside the
+    Post-remediation (this test): receive_block rejects the second genesis
+    with DuplicateGenesisError (an InvalidBlockError); the ChainDAO registry
+    stays at one row.
+    Pre-remediation (the gap this guards): receive_block accepted G2,
+    Node.add_block's create_chain fallback built a fresh Chain instance, and
+    a second ChainDAO row was committed pointing at G2 alongside the
     canonical one pointing at G1.
     """
     with app.app_context():
