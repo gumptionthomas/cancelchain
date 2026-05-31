@@ -465,20 +465,6 @@ def test_a7_j_disjoint_genesis_reorg_rejected(
         assert _chain_count() == 1
 
 
-@pytest.mark.xfail(
-    reason=(
-        'Audit finding A7.e — severity Low — three call sites apply '
-        'TXN_TIMEOUT with three different comparison operators around '
-        'the boundary value: Block.validate_transaction uses strict < '
-        '(block.py:269), Miller.pending_chain_txns uses strict > '
-        '(miller.py:74), and Node.discard_expired_pending_txns uses <= '
-        '(node.py:105). A txn timestamped exactly now-TXN_TIMEOUT is '
-        'non-expired per the block validator but expired per pending-pool '
-        'maintenance. See '
-        'docs/superpowers/audits/2026-05-29-verification-pipeline-audit.md'
-    ),
-    strict=True,
-)
 def test_a7_e_txn_timeout_boundary_inconsistency(
     app, time_machine, wallet
 ) -> None:
