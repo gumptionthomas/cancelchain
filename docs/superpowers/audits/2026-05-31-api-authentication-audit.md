@@ -41,7 +41,7 @@ Findings are ID'd as `A<N>.<letter>` where `N` is the adversary number (1-7) and
 
 ## Findings table
 
-**8 findings: 0 Critical / 1 High / 5 Medium / 2 Low.** Sorted by severity, then ID. Five of the Mediums (A3.a, A5.b, A3.b) collapse onto a small number of shared remediations — see Recommendations.
+**8 findings: 0 Critical / 1 High / 5 Medium / 2 Low.** Sorted by severity, then ID. Three of the Mediums (A3.a, A5.b, A3.b) collapse onto one shared root remediation, and two more (A2.c, A7.a) onto another — see Recommendations.
 
 | ID | Category | Severity | Description | Remediation sketch | Test |
 |---|---|---|---|---|---|
