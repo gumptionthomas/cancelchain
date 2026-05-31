@@ -321,19 +321,6 @@ def test_a4_c_ii_coinbase_replay_inflates_balance(
             m.receive_block(b_adv.to_json())
 
 
-@pytest.mark.xfail(
-    reason=(
-        'Audit finding A7.b — severity Low — Chain.validate_block has no '
-        '"is the canonical genesis already taken?" check, so any block '
-        'with prev_hash=GENESIS_HASH, idx=0, target=MAX_TARGET is accepted '
-        'as a fresh genesis. Each accepted alternate genesis creates a new '
-        'ChainDAO row, fragmenting the chain registry into N parallel '
-        'single-block chains and consuming DB rows without any operational '
-        'recovery path. See '
-        'docs/superpowers/audits/2026-05-29-verification-pipeline-audit.md'
-    ),
-    strict=True,
-)
 def test_a7_b_alternate_genesis_fragments_chain_registry(
     app, time_machine, wallet, miller_2_wallet
 ) -> None:
