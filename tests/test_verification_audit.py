@@ -38,6 +38,7 @@ from cancelchain.chain import GENESIS_HASH, REWARD
 from cancelchain.database import db
 from cancelchain.exceptions import (
     DuplicateGenesisError,
+    DuplicateMinedTransactionError,
     InvalidCoinbaseError,
     InvalidTransactionError,
     MismatchedCoinbaseError,
@@ -56,32 +57,20 @@ from cancelchain.util import dt_2_iso, now, now_iso
 TEST_TARGET = 'F' * 64
 
 
-@pytest.mark.xfail(
-    reason=(
-        'Audit finding A1.f — severity Low — Node.receive_transaction '
-        'does not reject txids that already exist in the persisted chain '
-        '(TransactionDAO), so an adversary can replay any mined '
-        'transaction back into the pending pool where it lives until '
-        'TXN_TIMEOUT (4h). The chain is unaffected — block assembly '
-        'filters mined txids out — but the pending pool can be inflated '
-        'with stale entries. See '
-        'docs/superpowers/audits/2026-05-29-verification-pipeline-audit.md'
-    ),
-    strict=True,
-)
 def test_a1_f_mined_txid_replay_into_pending(app, time_machine, wallet):
-    """A1.f: replaying a mined transaction back into the pending pool.
+    """A1.f: a mined transaction replayed into the pending pool is
+    rejected (regression test).
 
     Pre-state: Transaction T has been mined into a block at chain
     height >= 1; T is in TransactionDAO. We then drain the pending pool
     to simulate the cross-node case where T arrived only via block
     gossip and was never in this node's pending pool.
     Attack: POST T's exact JSON to Node.receive_transaction.
-    Expected after remediation: receive_transaction raises
-    InvalidTransactionError (e.g. via a new DuplicateMinedTransactionError)
-    on the lookup-then-pending-add path.
-    Observed today: receive_transaction silently accepts T into pending,
-    where it sits until TXN_TIMEOUT (4h) expiry.
+    Invariant under test (post-remediation): receive_transaction raises
+    DuplicateMinedTransactionError (a TransactionDAO.get hit) before the
+    pending-add, so T never re-enters pending.
+    Pre-remediation, receive_transaction silently accepted T into pending,
+    where it sat until TXN_TIMEOUT (4h) expiry.
     """
     with app.app_context():
         now_dt = now()
@@ -126,9 +115,9 @@ def test_a1_f_mined_txid_replay_into_pending(app, time_machine, wallet):
         when_dt += datetime.timedelta(minutes=1)
         time_machine.move_to(when_dt)
         # Attack: replay the mined transaction's JSON to receive_transaction.
-        # After remediation, this should raise InvalidTransactionError.
-        # Today, it silently accepts the duplicate into pending.
-        with pytest.raises(InvalidTransactionError):
+        # Post-remediation this raises DuplicateMinedTransactionError
+        # (pre-remediation it silently accepted the duplicate into pending).
+        with pytest.raises(DuplicateMinedTransactionError):
             m.receive_transaction(t.txid, t.to_json())
 
 
