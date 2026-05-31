@@ -69,7 +69,16 @@ Leave the test function body unchanged.
 
 - [ ] **Step 2: Write the failing unit + miller tests**
 
-In `tests/test_block.py`, add `txn_is_expired` to the `from cancelchain.block import (...)` line (it currently imports `MAX_TRANSACTIONS, TXN_TIMEOUT, Block` — result: `MAX_TRANSACTIONS, TXN_TIMEOUT, Block, txn_is_expired`). `datetime`, `TXN_TIMEOUT`, and `now` are already imported. Append:
+In `tests/test_block.py`, add `txn_is_expired` to the block import. The current single-line `from cancelchain.block import MAX_TRANSACTIONS, TXN_TIMEOUT, Block` would exceed the 80-char limit with a fourth name, so convert it to the parenthesized multi-line form:
+```python
+from cancelchain.block import (
+    MAX_TRANSACTIONS,
+    TXN_TIMEOUT,
+    Block,
+    txn_is_expired,
+)
+```
+(`datetime`, `TXN_TIMEOUT`, and `now` are already imported elsewhere in the file.) Append:
 
 ```python
 def test_txn_is_expired_boundary():
@@ -285,7 +294,16 @@ Replace: `1 open finding: 0 Critical / 0 High / 0 Medium / 1 Low (post-A7.e).`
 Find: `**Outcome:** REJECTED operationally (the txn gets discarded from pending before any miller picks it up) but ACCEPTED structurally (block-layer validation considers it non-expired). The boundary inconsistency is observable: the same txn-timestamp is "alive" per Block layer and "dead" per Node/Miller layers.`
 Replace: `**Outcome:** RESOLVED (post-remediation). All four sites now share one `txn_is_expired()` definition (expired ⟺ strictly older than `TXN_TIMEOUT`; open boundary), so a boundary txn is consistently "alive" across the Block validator, Node discard, Miller selection, and the pending-query SQL. (Pre-remediation, the same txn-timestamp was "alive" per the Block layer but "dead" per Node/Miller.)`
 
-(e) Finding A7.e paragraph (line 978, beginning `**Finding A7.e — Severity Low:**`): prefix with `✅ **Remediated.** `, insert `(pre-remediation behavior described below)` right after the bold `**Finding A7.e — Severity Low**` marker, convert the gap-description verbs to PAST tense (`apply`→`applied`, `uses`→`used` ×3, `is therefore`→`was therefore`), and append to the END of the paragraph: ` Remediated: a single `txn_is_expired(txn_ts, reference_dt)` helper in `src/cancelchain/block.py` now defines the open boundary; `Block.validate_transaction` (behavior-identical), `Node.discard_expired_pending_txns`, and `Miller.pending_chain_txns` all call it, and the `PendingTxnDAO.json_datas` SQL (`timestamp >= cutoff`) carries a cross-ref comment. Regression: `test_a7_e_txn_timeout_boundary_inconsistency` plus `test_txn_is_expired_boundary` and `test_pending_chain_txns_boundary_alive`.` (Apply the "past-tense Finding paragraph under a ✅ Remediated banner" convention.)
+(e) Finding A7.e paragraph (line 978) — replace the entire paragraph (a single substring swap). This applies the "past-tense Finding paragraph under a ✅ Remediated banner" convention and drops the now-stale per-site line numbers (avoiding doc line-drift).
+
+Find exactly:
+```
+**Finding A7.e — Severity Low:** Three call sites apply `TXN_TIMEOUT` with three different comparison operators around the boundary value: `Block.validate_transaction` uses strict `<` (`src/cancelchain/block.py:269`), `Miller.pending_chain_txns` uses strict `>` (`src/cancelchain/miller.py:74`), and `Node.discard_expired_pending_txns` uses `<=` (`src/cancelchain/node.py:105`). A txn whose `timestamp` is *exactly* `now - TXN_TIMEOUT` is therefore "non-expired" per the block validator but "expired" per pending-pool maintenance and miller selection. No chain-correctness invariant is violated (the txn would be REJECTED via the miller's exclusion before reaching a block), but the inconsistency is a latent foot-gun: a future refactor that swaps the miller's `>` for `>=` (or removes `discard_expired_pending_txns`'s `<=` branch) would let the txn drift to a state where the block layer accepts what the miller silently rejected, complicating debugging of "why didn't this txn get mined." The spec intent ("`TXN_TIMEOUT` window") is ambiguous about whether the boundary is open or closed; pick one and apply consistently.
+```
+Replace with:
+```
+✅ **Remediated.** **Finding A7.e — Severity Low** (pre-remediation behavior described below): Three call sites applied `TXN_TIMEOUT` with three different comparison operators around the boundary value: `Block.validate_transaction` used strict `<`, `Miller.pending_chain_txns` used strict `>`, and `Node.discard_expired_pending_txns` used `<=`. A txn whose `timestamp` was *exactly* `now - TXN_TIMEOUT` was therefore "non-expired" per the block validator but "expired" per pending-pool maintenance and miller selection. No chain-correctness invariant was violated (the txn would have been REJECTED via the miller's exclusion before reaching a block), but the inconsistency was a latent foot-gun: a future refactor that swapped the miller's `>` for `>=` (or removed `discard_expired_pending_txns`'s `<=` branch) would have let the txn drift to a state where the block layer accepts what the miller silently rejected. Remediated: a single `txn_is_expired(txn_ts, reference_dt)` helper in `src/cancelchain/block.py` now defines the open boundary; `Block.validate_transaction` (behavior-identical), `Node.discard_expired_pending_txns`, and `Miller.pending_chain_txns` all call it, and the `PendingTxnDAO.json_datas` SQL (`timestamp >= cutoff`) carries a cross-ref comment. Regression: `test_a7_e_txn_timeout_boundary_inconsistency` plus `test_txn_is_expired_boundary` and `test_pending_chain_txns_boundary_alive`.
+```
 
 (f) Remediation-priority section (heading line 1169, body line 1171):
 - Change heading `### 5. A7.e (Low) — pick one `TXN_TIMEOUT` comparison operator` to `### 5. A7.e (Low) — ✅ Implemented — single `txn_is_expired()` definition`.
