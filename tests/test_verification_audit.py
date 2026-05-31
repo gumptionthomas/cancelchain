@@ -518,18 +518,18 @@ def test_a7_e_txn_timeout_boundary_inconsistency(
 
         # Cross-check that Block.validate_transaction at the boundary
         # accepts T (block timestamp = `when_dt`, txn timestamp =
-        # `when_dt - TXN_TIMEOUT`; block.py:269's strict-< means
-        # equality is non-expired).
+        # `when_dt - TXN_TIMEOUT`; the open-boundary `txn_is_expired`
+        # check treats equality as non-expired).
         boundary_block = Block(timestamp=dt_2_iso(when_dt))
         # Should NOT raise ExpiredTransactionError; the block validator
         # treats this txn as alive at the boundary.
         boundary_block.validate_transaction(t)
 
-        # Today: Node.discard_expired_pending_txns evicts T because it
-        # uses `<= now() - TXN_TIMEOUT` (node.py:105). After remediation
-        # (open-boundary semantics applied consistently), the eviction
-        # check should align with Block.validate_transaction's strict-<,
-        # leaving T in pending.
+        # Pre-remediation, Node.discard_expired_pending_txns evicted T
+        # because it used `<= now() - TXN_TIMEOUT`. After remediation
+        # (open-boundary semantics applied consistently via txn_is_expired),
+        # the eviction check aligns with Block.validate_transaction's
+        # strict `<`, leaving T in pending.
         m.discard_expired_pending_txns()
         assert len(m.pending_txns) == 1, (
             'A7.e gap demonstrated: T was discarded by '
