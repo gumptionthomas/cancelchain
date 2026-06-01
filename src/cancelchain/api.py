@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 import json
-import re
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from datetime import datetime
 from enum import Enum
 from functools import wraps
@@ -33,7 +32,12 @@ from cancelchain.block import TXN_TIMEOUT, Block
 from cancelchain.cache import cache
 from cancelchain.chain import Chain
 from cancelchain.database import db
-from cancelchain.exceptions import CCError, EmptyChainError, MissingBlockError
+from cancelchain.exceptions import (
+    CCError,
+    EmptyChainError,
+    InvalidRoleConfigError,
+    MissingBlockError,
+)
 from cancelchain.models import ApiToken
 from cancelchain.node import Node
 from cancelchain.payload import encode_subject, validate_raw_subject
@@ -42,6 +46,7 @@ from cancelchain.schema import (
     PublicKeyType,
     pydantic_errors_to_messages,
     truncate,
+    validate_address_format,
 )
 from cancelchain.signals import http_post as http_post_signal
 from cancelchain.tasks import post_process
@@ -177,13 +182,39 @@ class Role(Enum):
         return [
             role
             for role in Role
-            if any(re.fullmatch(x, address) for x in role.addresses())
+            if (addrs := role.addresses()) is not None
+            and (address in addrs or '*' in addrs)
         ]
 
     @classmethod
     def address_role(cls, address: str) -> Role | None:
         roles = cls.address_roles(address)
         return roles[-1] if roles else None
+
+    @classmethod
+    def validate_config(cls, config: Mapping[str, Any]) -> None:
+        """Reject malformed role allowlists at startup.
+
+        Each *_ADDRESSES entry must be a valid cancelchain address,
+        except the '*' match-all sentinel which is permitted only in
+        READER_ADDRESSES. Raises InvalidRoleConfigError on any violation.
+        """
+        for role in cls:
+            for entry in config.get(f'{role.name}_ADDRESSES', []) or []:
+                if entry == '*':
+                    if role is not cls.READER:
+                        msg = (
+                            f'{role.name}_ADDRESSES contains "*" '
+                            '(match-all is permitted only in '
+                            'READER_ADDRESSES)'
+                        )
+                        raise InvalidRoleConfigError(msg)
+                elif not validate_address_format(entry):
+                    msg = (
+                        f'{role.name}_ADDRESSES entry {entry!r} '
+                        'is not a valid cancelchain address'
+                    )
+                    raise InvalidRoleConfigError(msg)
 
 
 class TokenView(MethodView):

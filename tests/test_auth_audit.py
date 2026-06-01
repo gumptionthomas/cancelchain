@@ -256,14 +256,6 @@ def test_a3_b_cross_node_token_replay(
     assert response.status_code == httpx.codes.FORBIDDEN
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        'Audit finding A4.a — severity High — overbroad *_ADDRESSES regex '
-        'silently escalates any reader-key holder to admin role. '
-        'See docs/superpowers/audits/2026-05-31-api-authentication-audit.md'
-    ),
-)
 def test_a4_a_overbroad_admin_regex_escalates_reader(
     app, host, mill_block, requests_proxy, reader_wallet
 ):

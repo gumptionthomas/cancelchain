@@ -67,6 +67,10 @@ def create_app(
     if config_map is not None:
         app.config.from_mapping(config_map)
 
+    from .api import Role  # noqa: PLC0415 — deferred (api imports app modules)
+
+    Role.validate_config(app.config)
+
     init_app(app, register_browser=register_browser)
 
     try:

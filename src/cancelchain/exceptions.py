@@ -176,3 +176,7 @@ class EmptyChainError(InvalidChainError):
 
 class MissingPreviousBlockError(InvalidChainError):
     pass
+
+
+class InvalidRoleConfigError(CCError):
+    pass
