@@ -222,7 +222,7 @@ Append:
 
 ```python
 def test_authorize_insufficient_live_role_forbidden(
-    app, host, mill_block, reader_wallet
+    app, host, mill_block, reader_wallet, requests_proxy
 ):
     # A wallet with a valid token but a live role below the endpoint's
     # requirement is forbidden (403), not unauthorized (401).
@@ -237,7 +237,7 @@ def test_authorize_insufficient_live_role_forbidden(
 
 
 def test_authorize_honors_live_downgrade(
-    app, host, mill_block, miller_wallet
+    app, host, mill_block, miller_wallet, requests_proxy
 ):
     # An address demoted mid-token-life is governed by its live role, not
     # the higher role baked into its still-valid token.
