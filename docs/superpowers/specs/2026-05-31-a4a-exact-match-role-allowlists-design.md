@@ -20,7 +20,7 @@ def address_roles(cls, address: str) -> list[Role]:
 
 `re.fullmatch` anchors the whole string, but the **patterns themselves are operator-supplied and unvalidated**. A pattern such as `CC.*CC` fullmatches *every* valid address, so configuring it for `ADMIN_ADDRESSES` silently grants ADMIN to every authenticated wallet — no key compromise, no warning from the code. Demonstrated by `tests/test_auth_audit.py::test_a4_a_overbroad_admin_regex_escalates_reader` (currently `@pytest.mark.xfail(strict=True)`).
 
-**Why regex is the wrong tool here.** Addresses are opaque cryptographic identifiers (`CC` + base58(32 bytes) + `CC`, per `validate_address_format`). There is no legitimate "pattern" semantics over them — a regex either names one address (an exact string, since base58 contains no regex metacharacters) or matches a *family* it has no business matching (the `.*` foot-gun). Evidence that the regex capability is unused-as-patterns: every `*_ADDRESSES` entry in `tests/.test.env` and `tests/conftest.py` is already an exact address. The chain is also pre-1.0 with no deployed nodes, so there is no migration burden.
+**Why regex is the wrong tool here.** Addresses are opaque cryptographic identifiers (`CC` + base58(32 bytes) + `CC`, per `validate_address_format`). There is no legitimate "pattern" semantics over them — a regex either names one address (an exact string, since base58 contains no regex metacharacters) or matches a *family* it has no business matching (the `.*` foot-gun). The regex capability **is** exercised today, but only to express exactly that foot-gun: `tests/test_api.py::test_regex_roles` asserts that `READER_ADDRESSES=['.*']` grants READER to an arbitrary wallet, and that `['CC.*CC']` matches every CC-format address — i.e. the test codifies the over-match this remediation eliminates. Every *legitimate* `*_ADDRESSES` entry (in `tests/.test.env` and `tests/conftest.py`'s `app` fixture) is already an exact address. So dropping regex removes a capability whose only demonstrated use is the vulnerability itself; `test_regex_roles` is removed as part of this change (the "open read" intent it expressed is preserved by the new READER-only `"*"` sentinel). The chain is also pre-1.0 with no deployed nodes, so there is no migration burden.
 
 ## Goal
 
@@ -87,7 +87,9 @@ Matching itself is total (no exceptions): `address_roles` returns `[]` for an un
 
 ## Testing
 
-**Flip the demonstration test.** `tests/test_auth_audit.py::test_a4_a_overbroad_admin_regex_escalates_reader` drops its `@pytest.mark.xfail(strict=True)` marker and becomes a passing regression test asserting the secure behavior: constructing an app with `ADMIN_ADDRESSES=["CC.*CC"]` raises `InvalidRoleConfigError`. The test/docstring is reframed to describe the post-remediation invariant (not "gap demonstrated"). Renamed to `test_a4_a_overbroad_admin_regex_rejected_at_startup` to match the new behavior.
+**Flip the demonstration test.** `tests/test_auth_audit.py::test_a4_a_overbroad_admin_regex_escalates_reader` drops its `@pytest.mark.xfail(strict=True)` marker and becomes a passing regression test. It keeps its structure (mutate `ADMIN_ADDRESSES=['CC.*CC']` at runtime, handshake as the reader wallet, inspect the minted `rol`) but now asserts the secure outcome: under exact-match the overbroad literal is inert, so the reader wallet resolves to READER (not ADMIN). Renamed to `test_a4_a_overbroad_admin_regex_does_not_escalate`, docstring reframed to past tense. The *startup-validation* defense — that a fresh app configured with `ADMIN_ADDRESSES=["CC.*CC"]` raises `InvalidRoleConfigError` — is covered separately by `test_create_app_rejects_overbroad_admin_config` in `tests/test_api.py` (the existing A4.a test mutates config post-startup, so it exercises the matching defense, not the startup gate).
+
+**Remove the obsolete regex test.** `tests/test_api.py::test_regex_roles` asserts the now-removed regex-matching behavior (`READER_ADDRESSES=['.*']` granting an arbitrary wallet access) — exactly the over-match being eliminated. It is deleted; its "open read via pattern" intent is preserved by the new READER-only `"*"` sentinel (covered by `test_address_role_reader_wildcard`).
 
 **New positive + negative coverage** (`tests/test_api.py`, where `Role`/auth tests live):
 - exact address listed in a role → `Role.address_role` returns that role; an unlisted address → `None`.
@@ -96,7 +98,7 @@ Matching itself is total (no exceptions): `address_roles` returns `[]` for an un
 - a non-address junk entry (`"CC.*CC"`, `"notanaddress"`) in any role list → raises.
 - multi-role precedence preserved: an address in both `READER_ADDRESSES` and `MILLER_ADDRESSES` → `address_role` returns `MILLER`.
 
-**Regression baseline.** `tests/conftest.py` and `tests/.test.env` already use exact addresses, so existing tests are unaffected. Suite moves from `256 passed, 8 xfailed, 1 skipped` to `264 passed, 7 xfailed, 1 skipped` — the A4.a xfail flips to a pass (8→7 xfailed) and the 7 new positive/negative role-config tests are added (256+7+1 = 264 passed). `--runxfail tests/test_auth_audit.py` then shows `7 failed` (A4.a no longer among them). All five CI gates (`ruff check`, `ruff format`, `pytest`, `mypy`, `db check`) stay green; `mypy --strict` over `src/` must accept the new classmethod and exception.
+**Regression baseline.** `tests/conftest.py` and `tests/.test.env` already use exact addresses, so existing tests are unaffected. Suite moves from `256 passed, 8 xfailed, 1 skipped` to `263 passed, 7 xfailed, 1 skipped` — the obsolete `test_regex_roles` is removed (−1), the A4.a xfail flips to a pass (8→7 xfailed, +1), and 7 new role-config tests are added (256 − 1 + 7 + 1 = 263 passed). `--runxfail tests/test_auth_audit.py` then shows `7 failed` (A4.a no longer among them). All five CI gates (`ruff check`, `ruff format`, `pytest`, `mypy`, `db check`) stay green; `mypy --strict` over `src/` must accept the new classmethod and exception.
 
 ## Documentation updates
 
@@ -118,5 +120,5 @@ Matching itself is total (no exceptions): `address_roles` returns `[]` for an un
 - `Role.validate_config` rejects, at `create_app` time, any non-address entry and any `'*'` outside `READER_ADDRESSES`, raising `InvalidRoleConfigError`; `create_app` calls it and does not swallow the exception.
 - `test_a4_a_*` passes as a real regression test (xfail marker removed); new positive/negative role-config tests pass.
 - `ADMIN_ADDRESSES=["CC.*CC"]` can no longer grant ADMIN to any wallet — it fails the node at startup.
-- All five CI gates green; suite `264 passed, 7 xfailed, 1 skipped` (256 baseline + 7 new role-config tests + the flipped A4.a xfail).
+- All five CI gates green; suite `263 passed, 7 xfailed, 1 skipped` (256 baseline − the removed `test_regex_roles` + 7 new role-config tests + the flipped A4.a xfail).
 - CLAUDE.md, the audit report (A4.a marked remediated, headline `0/0/5/2`), and the roadmap are updated.

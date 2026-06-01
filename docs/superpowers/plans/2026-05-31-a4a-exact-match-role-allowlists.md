@@ -16,7 +16,7 @@
 - `uv --version` 0.4.x+; `gh auth status` authenticated.
 - The audit is merged: `git log --oneline -1 main` shows `e059204` (`docs(roadmap): close API auth audit …`) or later.
 - The branch `docs/a4a-exact-match-role-allowlists` exists with one commit (the spec). This plan adds the plan file as a second commit and ships both as the docs PR.
-- Test baseline: **256 passed, 8 xfailed, 1 skipped**. After this work: 7 new role-config tests are added (Task 2) and the A4.a xfail flips to a pass (Task 3) → **264 passed, 7 xfailed, 1 skipped** (256 + 7 new + 1 flipped = 264 passed; 8 − 1 = 7 xfailed).
+- Test baseline: **256 passed, 8 xfailed, 1 skipped**. After this work: the obsolete `test_regex_roles` is removed and 7 new role-config tests are added (Task 2), and the A4.a xfail flips to a pass (Task 3) → **263 passed, 7 xfailed, 1 skipped** (256 − 1 removed + 7 new + 1 flipped = 263 passed; 8 − 1 = 7 xfailed).
 - CI hard-gates: `ruff check`, `ruff format --check`, `pytest`, `mypy`, `cancelchain db upgrade` + `cancelchain db check`.
 - **Review loop** (per `feedback_internal_review_then_one_copilot`): before opening each PR, run the internal cross-model (Sonnet) review to convergence, then exactly one Copilot backstop. Copilot does **not** auto-re-review here — trigger with `gh pr comment <N> --body "/copilot review"` if a fix round is needed. `wor`/`mwg` are controller work.
 - Never push directly to `main`.
@@ -197,6 +197,8 @@ def test_create_app_rejects_overbroad_admin_config():
         )
 ```
 
+Also **delete** the existing `test_regex_roles` function from `tests/test_api.py` (currently at ~line 95). It asserts the regex-matching behavior this change removes — `READER_ADDRESSES=['.*']` granting an arbitrary wallet READER, and `['CC.*CC']` matching every CC-address — i.e. the exact over-match A4.a eliminates. Under exact-match its assertions invert, so it must go; the legitimate "open read via pattern" intent it expressed is preserved by the new `test_address_role_reader_wildcard` (the `"*"` sentinel). Leave `test_roles` and `test_no_role` untouched.
+
 - [ ] **Step 2: Run the new tests — verify they fail**
 
 ```bash
@@ -313,9 +315,9 @@ uv run ruff check src tests
 uv run ruff format --check src tests
 uv run mypy
 ```
-Expected: pytest `263 passed, 8 xfailed, 1 skipped` (256 baseline + 7 new test functions; note the A4.a flip happens in Task 3, so xfailed is still 8 here). ruff/mypy clean. (If `ruff check` flags `import re` as still present/unused, confirm it was removed in Step 4a.)
+Expected: pytest `262 passed, 8 xfailed, 1 skipped` (256 baseline − the removed `test_regex_roles` + 7 new test functions; the A4.a flip happens in Task 3, so xfailed is still 8 here). ruff/mypy clean. (If `ruff check` flags `import re` as still present/unused, confirm it was removed in Step 4a.)
 
-> Count note: Step 1 adds 7 test functions → 263 passed at this task. Task 3 flips the A4.a xfail (8 → 7 xfailed, +1 passed) → final `264 passed, 7 xfailed, 1 skipped`. Re-derive from actual output; do not hand-tune.
+> Count note: Step 1 removes `test_regex_roles` (−1) and adds 7 test functions (+7) → 262 passed at this task. Task 3 flips the A4.a xfail (8 → 7 xfailed, +1 passed) → final `263 passed, 7 xfailed, 1 skipped`. Re-derive from actual output; do not hand-tune.
 
 - [ ] **Step 8: Commit**
 
@@ -403,7 +405,7 @@ Expected: the A4.a test passes (1 passed); 8 `def test_a`; 7 xfail markers.
 
 ```bash
 uv run pytest tests/test_auth_audit.py -q 2>&1 | tail -2   # 1 passed, 7 xfailed
-uv run pytest 2>&1 | tail -2                                # 264 passed, 7 xfailed, 1 skipped
+uv run pytest 2>&1 | tail -2                                # 263 passed, 7 xfailed, 1 skipped
 uv run pytest --runxfail tests/test_auth_audit.py -q 2>&1 | tail -2  # 7 failed (A4.a no longer demonstrates a gap)
 ```
 Expected as annotated.
@@ -468,7 +470,7 @@ grep -n "✅.*A4.a\|A4.a.*remediated\|exact-match" docs/superpowers/ROADMAP.md
 uv run pytest 2>&1 | tail -2
 uv run ruff check src tests && uv run ruff format --check src tests && uv run mypy
 ```
-Expected: headline shows the High remediated; roadmap shows A4.a ✅; suite `264 passed, 7 xfailed, 1 skipped`; gates clean.
+Expected: headline shows the High remediated; roadmap shows A4.a ✅; suite `263 passed, 7 xfailed, 1 skipped`; gates clean.
 
 - [ ] **Step 5: Commit**
 
@@ -518,7 +520,7 @@ Addresses are opaque hashes — regex over them only ever meant `.*` (the foot-g
 The other audit findings (A3.a/A5.b live-role re-check, A3.b iss/aud, A2.c/A7.a throttling, A1.a SECRET_KEY, A2.e oracle) are separate PRs.
 
 ## Test plan
-- [x] `uv run pytest` → `264 passed, 7 xfailed, 1 skipped`.
+- [x] `uv run pytest` → `263 passed, 7 xfailed, 1 skipped`.
 - [x] `uv run pytest --runxfail tests/test_auth_audit.py` → `7 failed` (A4.a no longer demonstrates a gap).
 - [x] New role-config tests in `tests/test_api.py` (exact match, READER `"*"`, precedence, startup rejection of non-address + out-of-READER `"*"`).
 - [x] `ruff check` + `ruff format --check` + `mypy` clean.
@@ -565,7 +567,7 @@ Expected: no `re.fullmatch` / `import re` in api.py; `InvalidRoleConfigError` de
 - [ ] **Step 3: Suite + xfail integrity**
 
 ```bash
-uv run pytest 2>&1 | tail -2                                   # 264 passed, 7 xfailed, 1 skipped
+uv run pytest 2>&1 | tail -2                                   # 263 passed, 7 xfailed, 1 skipped
 uv run pytest --runxfail tests/test_auth_audit.py -q 2>&1 | tail -2   # 7 failed
 uv run ruff check src tests && uv run ruff format --check src tests && uv run mypy
 ```
