@@ -31,6 +31,22 @@ def test_verify_rejects_tampered_path():
         signing.verify(headers, **bad)
 
 
+def test_verify_rejects_tampered_query():
+    w = Wallet()
+    headers = signing.sign_headers(w, **REQ)
+    bad = {**REQ, 'query': 'earliest=999'}
+    with pytest.raises(signing.SignatureError):
+        signing.verify(headers, **bad)
+
+
+def test_verify_rejects_tampered_method():
+    w = Wallet()
+    headers = signing.sign_headers(w, **REQ)
+    bad = {**REQ, 'method': 'GET'}
+    with pytest.raises(signing.SignatureError):
+        signing.verify(headers, **bad)
+
+
 def test_verify_rejects_tampered_body():
     w = Wallet()
     headers = signing.sign_headers(w, **REQ)
