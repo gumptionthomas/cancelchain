@@ -45,7 +45,7 @@ Findings are ID'd as `A<N>.<letter>` where `N` is the adversary number (1-7) and
 
 | ID | Category | Severity | Description | Remediation sketch | Test |
 |---|---|---|---|---|---|
-| A4.a | 4 | High | ✅ Operator `*_ADDRESSES` regex is unvalidated; an overbroad pattern (e.g. `CC.*CC`) silently escalates every authenticated address to that role (remediated, PR #PRNUM) | Anchor/validate configured role regexes at load; reject overbroad patterns (or use exact-match address lists) | `test_a4_a_overbroad_admin_regex_escalates_reader` |
+| A4.a | 4 | High | ✅ (remediated, PR #PRNUM) Operator `*_ADDRESSES` regex was unvalidated; an overbroad pattern (e.g. `CC.*CC`) silently escalated every authenticated address to that role | Replaced with exact-address membership + a READER-only `"*"` sentinel, validated at startup (`Role.validate_config`) | `test_a4_a_overbroad_admin_regex_does_not_escalate` |
 | A2.c | 2 | Medium | Unauthenticated `GET /api/token/<address>` persists an `ApiToken` row (and runs argon2) for any on-chain address, with no eviction | Require proof-of-key before persisting / cap unredeemed rows / rate-limit the endpoint | `test_a2_c_unauthenticated_row_creation` |
 | A3.a | 3 | Medium | `authorize()` trusts the signed `rol` claim and never re-validates it against live `Role.address_role()`; a token claiming a role the address lacks is honored | Re-check `Role.address_role(address)` in `authorize()` per request; reject if the live role is below the claimed role | `test_a3_a_forged_role_claim_accepted` |
 | A3.b | 3 | Medium | JWT carries no `iss`/`aud`; a token is accepted by any node sharing `SECRET_KEY` (cross-node replay) | Add and verify `iss` (node) + `aud` (`cancelchain`) claims | `test_a3_b_cross_node_token_replay` |
@@ -443,7 +443,7 @@ No `iss` (issuer) or `aud` (audience) claims are embedded in the JWT (`api.py:21
 
 **Remediation sketch:** Add a startup-time or request-time warning (or hard error) when a `{ROLE}_ADDRESSES` regex would match any address that is also matched by a lower-role pattern. At minimum, document in `EnvAppSettings` (config.py) and in `CLAUDE.md`'s configuration section that `CC.*CC` is an unrestricted wildcard: it matches every valid cancelchain address. A lightweight guard: after computing `address_roles()`, log a WARNING (once, at startup) for any role whose configured patterns produce a non-trivial intersection with lower roles. (As implemented: regex matching replaced with exact-address membership + a READER-only `"*"` sentinel; `Role.validate_config` rejects non-address entries and out-of-READER `"*"` at `create_app` startup via `InvalidRoleConfigError`.)
 
-**Demonstration test:** `test_a4_a_overbroad_admin_regex_escalates_reader`
+**Demonstration test:** `test_a4_a_overbroad_admin_regex_does_not_escalate` (flipped from the original strict-xfail to a passing regression test).
 
 ---
 
