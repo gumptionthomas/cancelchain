@@ -3,9 +3,11 @@ from datetime import timedelta
 import httpx
 import pytest
 
-from cancelchain.api import API_TOKEN_SECONDS
+from cancelchain import create_app
+from cancelchain.api import API_TOKEN_SECONDS, Role
 from cancelchain.api_client import ApiClient
 from cancelchain.block import Block
+from cancelchain.exceptions import InvalidRoleConfigError
 from cancelchain.miller import Miller
 from cancelchain.transaction import Transaction
 from cancelchain.util import now
@@ -90,30 +92,6 @@ def test_roles(
         assert request_block == m.longest_chain.last_block
         with pytest.raises(httpx.HTTPStatusError, match='405'):
             _ = ApiClient(host, transactor_wallet).post('/api/block/foo')
-
-
-def test_regex_roles(
-    reader_wallet,
-    app,
-    miller_wallet,
-    host,
-    mill_block,
-    requests_proxy,
-    transactor_wallet,
-    wallet,
-):
-    with app.app_context():
-        w = Wallet()
-        _m, _b = mill_block(w)
-        with pytest.raises(httpx.HTTPStatusError, match='403'):
-            _ = ApiClient(host, w).get_block()
-        app.config['READER_ADDRESSES'] = ['.*']
-        _ = ApiClient(host, w).get_block()
-        app.config['READER_ADDRESSES'] = ['CC.*CC']
-        _ = ApiClient(host, w).get_block()
-        app.config['READER_ADDRESSES'] = ['CC.*DD']
-        with pytest.raises(httpx.HTTPStatusError, match='403'):
-            _ = ApiClient(host, w).get_block()
 
 
 def test_non_app_wallet(app, host, mill_block, requests_proxy, wallet):
@@ -271,3 +249,99 @@ def test_pending_transactions_earliest_returns_recent_txns(
         txns = [Transaction.from_dict(t) for t in response.json()]
         assert len(txns) >= 1
         assert txn in txns
+
+
+# NOTE: the `app` fixture pre-loads all four *_ADDRESSES (the `wallet`
+# fixture's address is in ADMIN_ADDRESSES). Each matching test below
+# resets all four lists first so it controls the role config exactly —
+# otherwise an unrelated pre-loaded entry (e.g. ADMIN) would win.
+
+
+def _clear_role_config(app):
+    for key in (
+        'READER_ADDRESSES',
+        'TRANSACTOR_ADDRESSES',
+        'MILLER_ADDRESSES',
+        'ADMIN_ADDRESSES',
+    ):
+        app.config[key] = []
+
+
+def test_address_role_exact_match(app, wallet):
+    other = Wallet()
+    with app.app_context():
+        _clear_role_config(app)
+        app.config['MILLER_ADDRESSES'] = [wallet.address]
+        assert Role.address_role(wallet.address) is Role.MILLER
+        assert Role.address_role(other.address) is None
+
+
+def test_address_role_reader_wildcard(app, wallet):
+    with app.app_context():
+        _clear_role_config(app)
+        app.config['READER_ADDRESSES'] = ['*']
+        assert Role.address_role(wallet.address) is Role.READER
+        assert Role.address_role(Wallet().address) is Role.READER
+
+
+def test_address_role_highest_wins(app, wallet):
+    with app.app_context():
+        _clear_role_config(app)
+        app.config['READER_ADDRESSES'] = [wallet.address]
+        app.config['MILLER_ADDRESSES'] = [wallet.address]
+        assert Role.address_role(wallet.address) is Role.MILLER
+
+
+def test_validate_config_rejects_nonaddress(app):
+    app.config['ADMIN_ADDRESSES'] = ['CC.*CC']
+    with pytest.raises(InvalidRoleConfigError, match='ADMIN_ADDRESSES'):
+        Role.validate_config(app.config)
+
+
+def test_validate_config_rejects_wildcard_outside_reader(app):
+    for role_key in (
+        'TRANSACTOR_ADDRESSES',
+        'MILLER_ADDRESSES',
+        'ADMIN_ADDRESSES',
+    ):
+        app.config[role_key] = ['*']
+        with pytest.raises(InvalidRoleConfigError, match=role_key):
+            Role.validate_config(app.config)
+        app.config[role_key] = []
+
+
+def test_validate_config_accepts_reader_wildcard_and_exact(app, wallet):
+    app.config['READER_ADDRESSES'] = ['*']
+    app.config['ADMIN_ADDRESSES'] = [wallet.address]
+    Role.validate_config(app.config)  # must not raise
+
+
+def test_create_app_rejects_overbroad_admin_config():
+    with pytest.raises(InvalidRoleConfigError, match='ADMIN_ADDRESSES'):
+        create_app(
+            config_map={
+                'TESTING': True,
+                'SECRET_KEY': 'x' * 32,
+                'SQLALCHEMY_DATABASE_URI': 'sqlite:///:memory:',
+                'ADMIN_ADDRESSES': ['CC.*CC'],
+            },
+            register_browser=False,
+        )
+
+
+def test_address_role_wildcard_ignored_outside_reader(app, wallet):
+    # Defense-in-depth: even if '*' is injected into a higher tier at
+    # runtime (bypassing startup validation), match-time honors '*' only
+    # for READER — it must not escalate.
+    with app.app_context():
+        _clear_role_config(app)
+        app.config['MILLER_ADDRESSES'] = ['*']
+        assert Role.address_role(wallet.address) is None
+
+
+def test_validate_config_rejects_non_list(app):
+    # A non-list value (e.g. a bare string from a malformed env var) must
+    # fail-hard with a clear message, not iterate character-by-character.
+    app.config['ADMIN_ADDRESSES'] = 'CCnotalistCC'
+    with pytest.raises(InvalidRoleConfigError, match='must be a JSON list'):
+        Role.validate_config(app.config)
