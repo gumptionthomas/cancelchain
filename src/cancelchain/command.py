@@ -136,7 +136,7 @@ def bounded_lines(
     """
     for line in iter(lambda: f.readline(max_bytes + 1), ''):
         if len(line) > max_bytes:
-            msg = f'Import line exceeds the {max_bytes}-byte limit'
+            msg = f'Import line exceeds the {max_bytes}-character limit'
             raise ValueError(msg)
         yield line
 
