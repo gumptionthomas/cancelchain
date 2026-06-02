@@ -93,15 +93,11 @@ RFC 9421 HTTP Message Signatures is deferred until there is third-party-client d
 
 ---
 
-## (perf follow-up) Indexed/SQL-filtered mempool expiry + reads
-
-`discard_expired_pending_txns` / `PendingTxnView` / `create_block` iterate the full pool re-parsing every row via `PendingTxnSet.__iter__`. Now bounded to O(cap) by the N2 admission cap (`CC_MAX_PENDING_TXNS`); convert to an indexed timestamp query to drop the Python re-parse on the mill critical path. Surfaced by the 2026-06-01 P2P/networking audit (N2 finding).
-
----
-
 ## Closed items (historical reference)
 
 Each removed from this file when the closing PR landed. Keep here for now so future Claude sessions can see what was on the list.
+
+- ✅ **(perf follow-up) Indexed/SQL-filtered mempool expiry** — closed by PR [#118](https://github.com/gumptionthomas/cancelchain/pull/118). Added an index on `pending_txn.timestamp` (folded into the pre-1.0 base migration); `discard_expired_pending_txns` now uses `PendingTxnDAO.delete_expired(cutoff)` — an indexed SQL filter (`timestamp < cutoff`) + single-commit ORM `session.delete()` per row (so the `ioflows` cascade removes children — the FK has no `ON DELETE CASCADE`); `Miller.pending_chain_txns` iterates `query_json(expired=cutoff)` so the mill path only parses live rows; new `block.expiry_cutoff(reference_dt)` is the single-source cutoff helper. Open-boundary semantics preserved. Surfaced by the 2026-06-01 P2P/networking audit (N2 finding).
 
 - ✅ **P2P/networking threat-modeled audit — fully closed (0 Critical / 0 High / 0 Medium / 0 Low)** — closed by docs PR [#112](https://github.com/gumptionthomas/cancelchain/pull/112) (design + plan) and impl PRs below. All four findings (N1–N4) are remediated; every `@pytest.mark.xfail(strict=True)` demonstration in `tests/test_network_audit.py` is now a passing regression test. The P2P/networking audit is **fully closed at 0/0/0/0**. Originating report: [P2P/networking audit](audits/2026-06-01-network-p2p-audit.md).
   - ✅ **N1 (High) — `fill_chain` unbounded ancestor walk** — configurable depth cap (`CC_MAX_CHAIN_FILL_DEPTH`) + returned-hash check in `request_block`. Closed by PR #114.
