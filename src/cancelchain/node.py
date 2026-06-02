@@ -104,7 +104,7 @@ class Node:
                 if txn not in self.pending_txns:
                     raise
             added = True
-        if process:
+        if process and added:
             self.send_transaction(txn, visited_hosts=visited_hosts)
         return txn if added else None
 

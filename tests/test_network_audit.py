@@ -148,23 +148,12 @@ def test_n2_mempool_has_no_admission_cap(app, time_machine, wallet) -> None:
         assert len(m.pending_txns) <= 3
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        'AUDIT N3: an already-pending txn is re-gossiped on every receipt '
-        "(send_transaction called outside the 'newly added' guard), enabling "
-        '1->N fan-out amplification. Remove this marker when '
-        'receive_transaction only re-gossips a txn it actually newly added '
-        "(mirroring the block path's dedup-before-gossip)."
-    ),
-)
 def test_n3_pending_txn_regossiped_on_every_receipt(
     app, time_machine, wallet
 ) -> None:
-    """N3: an ALREADY-PENDING txn is re-gossiped on every receipt because
-    send_transaction is called unconditionally outside the
-    `if txn not in self.pending_txns` guard (node.py:95-105), unlike the
-    block path which dedups before gossiping.
+    """N3 (remediated): an ALREADY-PENDING txn is no longer re-gossiped on
+    every receipt. send_transaction is now gated on `added` (the 'newly
+    admitted' flag), mirroring the block path's dedup-before-gossip.
     """
     with app.app_context():
         now_dt = now()
@@ -385,3 +374,38 @@ def test_n2_full_mempool_returns_503(
         # The pool is now full -> the next valid txn is rejected with 503.
         r2 = client.post_transaction(make_txn(1), raise_for_status=False)
         assert r2.status_code == httpx.codes.SERVICE_UNAVAILABLE
+
+
+def test_n3_new_txn_gossips_once(app, time_machine, wallet) -> None:
+    """N3 (positive guard): a genuinely-new txn still gossips exactly once on
+    its first receipt -- the re-gossip gate must not kill legitimate first
+    propagation.
+    """
+    with app.app_context():
+        time_machine.move_to(now() - datetime.timedelta(hours=1))
+        m = Miller(milling_wallet=wallet)
+
+        t = Transaction()
+        t.add_inflow(Inflow(outflow_txid='0' * 64, outflow_idx=0))
+        t.add_outflow(Outflow(amount=1, subject=encode_subject('subj-n3-pos')))
+        t.set_wallet(wallet)
+        t.seal()
+        t.sign()
+
+        # Spy wired BEFORE the first receipt, so it captures first-propagation.
+        calls: list[str] = []
+        peer = 'http://peer.host:8000'
+
+        class SpyClient:
+            host = peer
+
+            def post_transaction(self, txn, visited_hosts=None):
+                calls.append(txn.txid)
+
+        m.peers = [peer]
+        m.clients = {peer: SpyClient()}
+
+        # First receipt of a NEW txn: admitted (added=True) -> gossips once.
+        m.receive_transaction(t.txid, t.to_json())
+        assert t in m.pending_txns
+        assert calls == [t.txid]
