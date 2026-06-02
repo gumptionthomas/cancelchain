@@ -290,3 +290,38 @@ def test_n4_async_publish_blocks_request_thread(
         # moved off the request thread) -> different thread -> passes ->
         # remove marker.
         assert delay_tid[0] != main_tid
+
+
+def test_n1_request_block_rejects_hash_mismatch(app, time_machine, wallet):
+    """N1 (hash-check half): request_block must reject a peer response whose
+    returned block hash does not equal the requested hash, instead of
+    returning the mismatched block. This is the primary fix -- it stops a
+    hostile peer from steering fill_chain's walk with fresh fakes.
+    """
+    with app.app_context():
+        time_machine.move_to(now() - datetime.timedelta(hours=1))
+        m = Miller(milling_wallet=wallet)
+        g = m.create_block()
+        m.mill_block(g)
+        # A valid block whose hash is known; the peer will serve it in
+        # response to a request for a DIFFERENT hash.
+        served = _hostile_block(g, wallet)
+        assert served.block_hash is not None
+
+        class _Resp:
+            status_code = 200
+            text = served.to_json()
+
+        class _PeerClient:
+            def get_block(self, block_hash=None, raise_for_status=False):
+                return _Resp()
+
+        peer = 'http://peer.host:8000'
+        m.peers = [peer]
+        m.clients = {peer: _PeerClient()}
+
+        requested = 'f' * 64
+        assert requested != served.block_hash
+        # Today: request_block returns `served` (no hash check) -> not None.
+        # After the fix: the hash mismatch is rejected -> None.
+        assert m.request_block(requested) is None

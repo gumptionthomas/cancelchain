@@ -34,6 +34,7 @@ class EnvAppSettings(EnvironSettings):
     NODE_HOST: str | None = field(default=None)
     PEERS: list[str] = field(default_factory=list)
     API_CLIENT_TIMEOUT: int = field(default=10)
+    MAX_CHAIN_FILL_DEPTH: int = field(default=50000)
     API_ASYNC_PROCESSING: bool = field(default=False)
     DEFAULT_COMMAND_HOST: str | None = field(default=None)
     WALLET_DIR: str | None = field(default=None)

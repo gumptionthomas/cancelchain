@@ -228,7 +228,15 @@ class Node:
                     block_hash=block_hash, raise_for_status=False
                 )
                 if r.status_code == 200:
-                    return Block.from_json(r.text)
+                    block = Block.from_json(r.text)
+                    if block is not None and block.block_hash == block_hash:
+                        return block
+                    self.logger.warning(
+                        'request_block: peer %s returned a block whose hash '
+                        'does not match the requested %s; ignoring',
+                        peer,
+                        block_hash,
+                    )
             except httpx.HTTPError as re:
                 self.logger.error(re)
             except Exception as e:
