@@ -55,26 +55,16 @@ def _hostile_block(prev_block: Block, wallet, idx_offset: int = 1) -> Block:
     return b
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        'AUDIT N1: fill_chain has no depth cap on its ancestor walk; a '
-        'hostile peer drives an attacker-controlled number of request_block '
-        'round-trips + ChainFillBlock commits. Remove this marker when '
-        'fill_chain honors a configurable depth cap (contract: '
-        "app.config['MAX_CHAIN_FILL_DEPTH']) and aborts the walk at the "
-        'threshold.'
-    ),
-)
 def test_n1_fill_chain_has_no_depth_cap(app, time_machine, wallet) -> None:
-    """N1: fill_chain's `while True` ancestor walk (node.py:343-361) has no
-    depth cap, so a hostile peer drives an attacker-controlled number of
-    request_block calls + ChainFillBlock commits.
+    """N1 (depth-cap half): fill_chain's ancestor walk is now bounded by
+    app.config['MAX_CHAIN_FILL_DEPTH']. A hostile peer that drives the walk
+    past max_depth causes fill_chain to abort (returning False and cleaning up
+    the ChainFill staging rows) rather than requesting an unbounded number of
+    ancestors.
 
-    The remediation contract is a configurable depth cap read from
-    app.config['MAX_CHAIN_FILL_DEPTH']; the walk must abort once it has
-    requested that many ancestors. Today there is no such cap, so the walk
-    runs until our patched request_block hits its own SAFETY bound.
+    Regression test: with MAX_CHAIN_FILL_DEPTH=3, a fake peer returning
+    ever-extending blocks must result in at most 3 request_block calls before
+    abort, so call_count <= 3.
     """
     with app.app_context():
         now_dt = now()
@@ -290,3 +280,82 @@ def test_n4_async_publish_blocks_request_thread(
         # moved off the request thread) -> different thread -> passes ->
         # remove marker.
         assert delay_tid[0] != main_tid
+
+
+def test_n1_request_block_rejects_hash_mismatch(app, time_machine, wallet):
+    """N1 (hash-check half): request_block must reject a peer response whose
+    returned block hash does not equal the requested hash, instead of
+    returning the mismatched block. This is the primary fix -- it stops a
+    hostile peer from steering fill_chain's walk with fresh fakes.
+    """
+    with app.app_context():
+        time_machine.move_to(now() - datetime.timedelta(hours=1))
+        m = Miller(milling_wallet=wallet)
+        g = m.create_block()
+        m.mill_block(g)
+        # A valid block whose hash is known; the peer will serve it in
+        # response to a request for a DIFFERENT hash.
+        served = _hostile_block(g, wallet)
+        assert served.block_hash is not None
+
+        class _Resp:
+            status_code = 200
+            text = served.to_json()
+
+        class _PeerClient:
+            def get_block(self, block_hash=None, raise_for_status=False):
+                return _Resp()
+
+        peer = 'http://peer.host:8000'
+        m.peers = [peer]
+        m.clients = {peer: _PeerClient()}
+
+        requested = 'f' * 64
+        assert requested != served.block_hash
+        # Today: request_block returns `served` (no hash check) -> not None.
+        # After the fix: the hash mismatch is rejected -> None.
+        assert m.request_block(requested) is None
+
+
+def test_n1_request_block_rejects_forged_block_hash_field(
+    app, time_machine, wallet
+):
+    """N1 (hash-check half, second-preimage): a peer cannot bypass the check
+    by forging the self-reported ``block_hash`` JSON field to equal the
+    requested hash over junk/unrelated content. ``block_hash`` is a stored,
+    peer-controlled field; the fix compares the COMPUTED header hash
+    (``get_header_hash()``), which binds the block's actual content, so a
+    forged field with mismatched content is rejected.
+    """
+    with app.app_context():
+        time_machine.move_to(now() - datetime.timedelta(hours=1))
+        m = Miller(milling_wallet=wallet)
+        g = m.create_block()
+        m.mill_block(g)
+        # A real block; we then LIE about its block_hash field, claiming the
+        # requested hash while the content still hashes to the real value.
+        forged = _hostile_block(g, wallet)
+        real_hash = forged.block_hash
+        assert real_hash is not None
+        requested = 'a' * 64
+        assert requested != real_hash
+        forged.block_hash = requested  # forged self-reported field
+        # The computed header hash still reflects the real content.
+        assert forged.get_header_hash() == real_hash
+
+        class _Resp:
+            status_code = 200
+            text = forged.to_json()
+
+        class _PeerClient:
+            def get_block(self, block_hash=None, raise_for_status=False):
+                return _Resp()
+
+        peer = 'http://peer.host:8000'
+        m.peers = [peer]
+        m.clients = {peer: _PeerClient()}
+
+        # The claimed field equals `requested`, but the computed hash does
+        # not -> rejected (without the computed-hash check this would have
+        # let a hostile peer steer fill_chain with no PoW).
+        assert m.request_block(requested) is None

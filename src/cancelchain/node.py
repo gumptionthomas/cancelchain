@@ -7,6 +7,7 @@ from time import sleep
 from typing import Any
 
 import httpx
+from flask import current_app
 from sqlalchemy.exc import SQLAlchemyError
 
 from cancelchain.block import Block, txn_is_expired
@@ -228,7 +229,28 @@ class Node:
                     block_hash=block_hash, raise_for_status=False
                 )
                 if r.status_code == 200:
-                    return Block.from_json(r.text)
+                    block = Block.from_json(r.text)
+                    # Verify the block's COMPUTED header hash equals the
+                    # requested hash, not just the self-reported block_hash
+                    # field (which a hostile peer controls in the JSON). The
+                    # computed hash binds the block's actual content, so a
+                    # peer cannot forge a block that hashes to an
+                    # attacker-chosen value (second-preimage resistance) —
+                    # this is what stops a hostile peer steering fill_chain's
+                    # walk. We also require the self-reported field to agree,
+                    # rejecting internally-inconsistent blocks.
+                    if (
+                        block is not None
+                        and block.block_hash == block_hash
+                        and block.get_header_hash() == block_hash
+                    ):
+                        return block
+                    self.logger.warning(
+                        'request_block: peer %s returned a block whose hash '
+                        'does not match the requested %s; ignoring',
+                        peer,
+                        block_hash,
+                    )
             except httpx.HTTPError as re:
                 self.logger.error(re)
             except Exception as e:
@@ -340,6 +362,8 @@ class Node:
             ).commit()
             progress_next()
             block: Block | None = last_block
+            max_depth = current_app.config['MAX_CHAIN_FILL_DEPTH']
+            requested = 0
             while True:
                 assert block is not None
                 is_genesis = is_genesis_block(block)
@@ -348,6 +372,15 @@ class Node:
                     prev_hash is None or Block.from_db(prev_hash)
                 ) or is_genesis:
                     break
+                requested += 1
+                if requested > max_depth:
+                    self.logger.warning(
+                        'fill_chain: exceeded MAX_CHAIN_FILL_DEPTH (%d) '
+                        'walking back from tip %s; aborting',
+                        max_depth,
+                        last_block.block_hash,
+                    )
+                    return False
                 block = self.request_block(prev_hash)
                 if block is None:
                     self.logger.error(f'Block request failed: {prev_hash}')
