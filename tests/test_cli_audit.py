@@ -66,6 +66,11 @@ def test_cli4_import_bounds_line_length(app, runner, tmp_path, monkeypatch):
     oversize = 8 * 1024 * 1024  # 8 MiB, >> any legitimate block line
     seen_lengths: list[int] = []
 
+    # Block.from_json is a @classmethod; monkeypatch.setattr replaces it with
+    # this plain function, stripping the classmethod descriptor. The import's
+    # `Block.from_json(line)` call therefore passes `line` as `data` (no `cls`
+    # is injected), so len(data) is the line length. The *args tail is purely
+    # defensive.
     def recording_from_json(data, *args, **kwargs):
         seen_lengths.append(len(data))
         msg = 'stop after recording'
