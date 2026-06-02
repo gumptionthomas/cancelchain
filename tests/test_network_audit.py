@@ -315,3 +315,47 @@ def test_n1_request_block_rejects_hash_mismatch(app, time_machine, wallet):
         # Today: request_block returns `served` (no hash check) -> not None.
         # After the fix: the hash mismatch is rejected -> None.
         assert m.request_block(requested) is None
+
+
+def test_n1_request_block_rejects_forged_block_hash_field(
+    app, time_machine, wallet
+):
+    """N1 (hash-check half, second-preimage): a peer cannot bypass the check
+    by forging the self-reported ``block_hash`` JSON field to equal the
+    requested hash over junk/unrelated content. ``block_hash`` is a stored,
+    peer-controlled field; the fix compares the COMPUTED header hash
+    (``get_header_hash()``), which binds the block's actual content, so a
+    forged field with mismatched content is rejected.
+    """
+    with app.app_context():
+        time_machine.move_to(now() - datetime.timedelta(hours=1))
+        m = Miller(milling_wallet=wallet)
+        g = m.create_block()
+        m.mill_block(g)
+        # A real block; we then LIE about its block_hash field, claiming the
+        # requested hash while the content still hashes to the real value.
+        forged = _hostile_block(g, wallet)
+        real_hash = forged.block_hash
+        assert real_hash is not None
+        requested = 'a' * 64
+        assert requested != real_hash
+        forged.block_hash = requested  # forged self-reported field
+        # The computed header hash still reflects the real content.
+        assert forged.get_header_hash() == real_hash
+
+        class _Resp:
+            status_code = 200
+            text = forged.to_json()
+
+        class _PeerClient:
+            def get_block(self, block_hash=None, raise_for_status=False):
+                return _Resp()
+
+        peer = 'http://peer.host:8000'
+        m.peers = [peer]
+        m.clients = {peer: _PeerClient()}
+
+        # The claimed field equals `requested`, but the computed hash does
+        # not -> rejected (without the computed-hash check this would have
+        # let a hostile peer steer fill_chain with no PoW).
+        assert m.request_block(requested) is None

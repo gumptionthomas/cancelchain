@@ -36,7 +36,15 @@ def request_block(self, block_hash: str) -> Block | None:
             r = client.get_block(block_hash=block_hash, raise_for_status=False)
             if r.status_code == 200:
                 block = Block.from_json(r.text)
-                if block is not None and block.block_hash == block_hash:
+                # Compare the COMPUTED header hash, not just the
+                # self-reported block_hash field (which the peer controls
+                # in the JSON). Require the field to agree too, rejecting
+                # internally-inconsistent blocks.
+                if (
+                    block is not None
+                    and block.block_hash == block_hash
+                    and block.get_header_hash() == block_hash
+                ):
                     return block
                 self.logger.warning(
                     'request_block: peer %s returned a block whose hash '
@@ -51,7 +59,7 @@ def request_block(self, block_hash: str) -> Block | None:
     return None
 ```
 
-A peer cannot produce a block that hashes to an attacker-chosen `prev_hash` (second-preimage resistance of `mill_hash = sha256(sha512(...))`), so it can no longer feed fresh fakes to steer the walk. A legitimate peer's real ancestors hash correctly and are accepted unchanged. A mismatched response is treated as a miss (try the next peer; `None` if none match), reusing the existing "request failed" path in `fill_chain`.
+The comparison is against the **computed** header hash (`get_header_hash()`), not the self-reported `block_hash` field — `block_hash` is a stored field that `Block.from_json` deserializes verbatim from the peer's JSON (it is only checked against the computed hash inside `Block.validate()`, which `request_block` does not call), so a peer could otherwise set `block_hash = <requested>` over junk content and bypass a field-only check. A peer cannot produce a block whose *content* hashes to an attacker-chosen `prev_hash` (second-preimage resistance of `mill_hash = sha256(sha512(...))`), so it can no longer feed fresh fakes to steer the walk. A legitimate peer's real ancestors hash correctly and are accepted unchanged. A mismatched response is treated as a miss (try the next peer; `None` if none match), reusing the existing "request failed" path in `fill_chain`.
 
 ### Change 2 — `fill_chain` depth cap (defense-in-depth)
 
@@ -117,7 +125,7 @@ Add `tests/test_network_audit.py::test_n1_request_block_rejects_hash_mismatch` (
 
 ### Regression suite
 
-Full suite stays green. After this change: `tests/test_network_audit.py` shows **3 xfailed** (N2/N3/N4 still open) **+ 2 passed** (the flipped N1 cap test and the new hash-mismatch test); `--runxfail tests/test_network_audit.py` fails only the three still-open demonstrations. All five CI gates green; `mypy --strict` accepts the `current_app` import and the new int config field.
+Full suite stays green. After this change: `tests/test_network_audit.py` shows **3 xfailed** (N2/N3/N4 still open) **+ 3 passed** (the flipped N1 cap test, the new hash-mismatch test, and the forged-`block_hash`-field test); `--runxfail tests/test_network_audit.py` fails only the three still-open demonstrations. All five CI gates green; `mypy --strict` accepts the `current_app` import and the new int config field.
 
 ## Documentation updates
 
@@ -137,5 +145,5 @@ Full suite stays green. After this change: `tests/test_network_audit.py` shows *
 - `request_block` returns `None` (and logs) when a peer's returned block hash ≠ the requested hash; returns the block unchanged on a match.
 - `fill_chain` aborts with a logged warning and `return False` (with `ChainFill` cleanup) once it has requested `MAX_CHAIN_FILL_DEPTH` ancestors; legitimate syncs within the cap are unaffected.
 - `MAX_CHAIN_FILL_DEPTH` is a config field (env `CC_MAX_CHAIN_FILL_DEPTH`, default 50000).
-- `test_n1_fill_chain_has_no_depth_cap` passes with its xfail marker removed; `test_n1_request_block_rejects_hash_mismatch` passes; full suite green (`tests/test_network_audit.py`: 3 xfailed + 2 passed).
+- `test_n1_fill_chain_has_no_depth_cap` passes with its xfail marker removed; `test_n1_request_block_rejects_hash_mismatch` and `test_n1_request_block_rejects_forged_block_hash_field` pass; full suite green (`tests/test_network_audit.py`: 3 xfailed + 3 passed).
 - Audit report headline `0 Critical / 0 High / 2 Medium / 1 Low`; N1 ✅. CLAUDE.md + roadmap updated.

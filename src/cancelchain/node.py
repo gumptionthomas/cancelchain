@@ -230,7 +230,20 @@ class Node:
                 )
                 if r.status_code == 200:
                     block = Block.from_json(r.text)
-                    if block is not None and block.block_hash == block_hash:
+                    # Verify the block's COMPUTED header hash equals the
+                    # requested hash, not just the self-reported block_hash
+                    # field (which a hostile peer controls in the JSON). The
+                    # computed hash binds the block's actual content, so a
+                    # peer cannot forge a block that hashes to an
+                    # attacker-chosen value (second-preimage resistance) —
+                    # this is what stops a hostile peer steering fill_chain's
+                    # walk. We also require the self-reported field to agree,
+                    # rejecting internally-inconsistent blocks.
+                    if (
+                        block is not None
+                        and block.block_hash == block_hash
+                        and block.get_header_hash() == block_hash
+                    ):
                         return block
                     self.logger.warning(
                         'request_block: peer %s returned a block whose hash '
