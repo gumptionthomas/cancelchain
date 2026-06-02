@@ -17,20 +17,15 @@ import stat
 import pytest
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason='CLI1: `wallet create` writes the private-key PEM at the process '
-    'umask (group/other-readable), not 0o600; flips once to_file creates it '
-    'owner-only.',
-)
 def test_cli1_wallet_create_writes_private_key_0600(app, runner, tmp_path):
-    """CLI1 (Medium) — `cancelchain wallet create` writes the new RSA private
-    key via `Wallet.to_file` → `open(filename, 'wb')` with no `chmod 0o600`,
-    so it lands at the process umask (commonly 0o644/0o664 → readable by a
-    different local user/process, who then holds a live signing identity).
-    Desired: the key file is owner-read/write only (0o600). The umask is
-    pinned permissive so the test is deterministic regardless of the runner's
-    environment.
+    """CLI1 (Medium) — REMEDIATED. `cancelchain wallet create` used to write
+    the new RSA private key via `Wallet.to_file` → `open(filename, 'wb')` with
+    no `chmod 0o600`, landing at the process umask (commonly 0o644/0o664 →
+    readable by a different local user/process, who then held a live signing
+    identity). `to_file` now creates the PEM owner-only via
+    `os.open(..., O_WRONLY|O_CREAT|O_EXCL, 0o600)`. This regression asserts the
+    0o600 mode; the umask is pinned permissive so it stays deterministic
+    regardless of the runner's environment.
     """
     old_umask = os.umask(0o022)
     try:

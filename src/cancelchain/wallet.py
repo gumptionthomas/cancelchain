@@ -222,8 +222,17 @@ class Wallet:
         filename = f'{self.address}.pem'
         if walletdir:
             filename = os.path.join(walletdir, filename)
-        with open(filename, 'wb') as f:
-            f.write(self.export_private_key_pem(passphrase=passphrase))
+        pem = self.export_private_key_pem(passphrase=passphrase)
+        # Write the private key owner-only and exclusively (audit CLI1).
+        # O_EXCL refuses to follow a pre-planted symlink or clobber an
+        # existing key; the 0o600 mode means the key is never momentarily
+        # group/world-readable (a plain open('wb') inherits the umask,
+        # commonly 0o644). The mode is masked by umask, but 0o600 has no
+        # group/other bits for umask to clear, so the result is 0o600
+        # regardless of the umask in effect.
+        fd = os.open(filename, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, 'wb') as f:
+            f.write(pem)
         return filename
 
     def __repr__(self) -> str:
