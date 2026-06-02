@@ -45,9 +45,9 @@ Originating spec:
 
 ## Audit remediation — wallet/crypto findings (2026-06-02)
 
-The [wallet/crypto threat-model audit](audits/2026-06-02-wallet-crypto-audit.md) (the fourth audit; design+plan PR #120) found **0 Critical / 0 High / 0 Medium / 2 Low** — no exploitable findings, 12 confirmed strengths. The two Low items are non-exploitable defense-in-depth / hygiene residuals with strict-xfail demonstrations in `tests/test_wallet_audit.py`:
+The [wallet/crypto threat-model audit](audits/2026-06-02-wallet-crypto-audit.md) (the fourth audit; design+plan PR #120) found **0 Critical / 0 High / 0 Medium / 2 Low** — no exploitable findings, 12 confirmed strengths. The two Low items are non-exploitable defense-in-depth / hygiene residuals, each with a demonstration in `tests/test_wallet_audit.py` (strict-xfail while open, a passing regression once remediated):
 
-- **WC1 (Low) — remove dead bespoke `encrypt`/`decrypt`.** The RSA-OAEP + AES-GCM hybrid has zero `src/` callers after PR #111; recommend removal (and its tests). Test: `test_wc1_bespoke_encrypt_decrypt_removed`.
+- ✅ **WC1 (Low) — remove dead bespoke `encrypt`/`decrypt`** — closed. Removed `Wallet.encrypt`/`Wallet.decrypt` (and the now-unused `AESGCM` import + `GCM_NONCE_SIZE`/`AES_SESSION_KEY_SIZE` constants) and their tests; `test_wc1_bespoke_encrypt_decrypt_removed` is now a passing regression.
 - **WC2 (Low) — enforce a public-exponent check on key import.** `Wallet.__init__` validates `key_size` but not the exponent; a 3072-bit `e=3` key is accepted. Reject `e != 65537` alongside the size check. Not exploitable (pyca's strict verifier forecloses cube-root forgery) — defense-in-depth + key-profile consistency. Test: `test_wc2_import_rejects_degenerate_exponent`.
 
 **Observations (no finding, address opportunistically):** `schema.validate_signature` performs no key→address binding (safe only because every caller runs `validate_pk_address` first — a load-bearing upstream invariant); the KDF behind `BestAvailableEncryption` on encrypted exports is unpinned (operator-local).

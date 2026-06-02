@@ -1,11 +1,13 @@
 """Demonstration tests for the 2026-06-02 wallet/crypto threat-model audit.
 
-Each test below demonstrates one audit finding and is marked
+Each test below demonstrates one audit finding and asserts the DESIRED
+post-fix behavior. While a finding is still open it carries
 ``@pytest.mark.xfail(strict=True)`` — strict mode means the test MUST fail
-today (the gap is real) and forces the marker's removal when the finding is
-remediated (the xfail would otherwise "unexpectedly pass" and error the
-suite). Each test asserts the DESIRED post-fix behavior, so it flips to a
-passing regression when the fix lands. See
+today (the gap is real) and forces the marker's removal at remediation (the
+xfail would otherwise "unexpectedly pass" and error the suite). Once a finding
+is remediated the marker is dropped and the test becomes a passing
+regression; tests below may therefore be a mix of strict-xfail (open) and
+plain regression (closed). See
 docs/superpowers/audits/2026-06-02-wallet-crypto-audit.md.
 
 The audit found 0 exploitable findings (0 Critical / 0 High / 0 Medium); the
@@ -22,17 +24,12 @@ from cancelchain.exceptions import InvalidKeyError
 from cancelchain.wallet import KEY_SIZE, Wallet, b64encode
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason='WC1: the bespoke encrypt/decrypt hybrid is dead (zero src callers '
-    'post-#111) and should be removed; flips to passing once it is gone.',
-)
 def test_wc1_bespoke_encrypt_decrypt_removed():
-    """WC1 (Low) — the RSA-OAEP + AES-GCM hybrid `Wallet.encrypt` /
-    `Wallet.decrypt` has no production caller after PR #111 replaced the
-    challenge/response handshake (only tests reference it). Unreachable
-    bespoke crypto is a re-introduction hazard and standing surface; the
-    recommended remediation is removal. This asserts the end state.
+    """WC1 (Low) — REMEDIATED. The RSA-OAEP + AES-GCM hybrid `Wallet.encrypt`
+    / `Wallet.decrypt` had no production caller after PR #111 replaced the
+    challenge/response handshake (only tests referenced it). Unreachable
+    bespoke crypto is a re-introduction hazard and standing surface; it was
+    removed. This regression asserts it stays gone.
     """
     assert not hasattr(Wallet, 'encrypt')
     assert not hasattr(Wallet, 'decrypt')
