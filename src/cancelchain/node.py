@@ -18,6 +18,7 @@ from cancelchain.exceptions import (
     InvalidBlockError,
     InvalidBlockHashError,
     InvalidTransactionIdError,
+    MempoolFullError,
     MissingBlockError,
 )
 from cancelchain.models import (
@@ -94,6 +95,8 @@ class Node:
         if TransactionDAO.get(txn.txid) is not None:
             raise DuplicateMinedTransactionError()
         if txn not in self.pending_txns:
+            if len(self.pending_txns) >= current_app.config['MAX_PENDING_TXNS']:
+                raise MempoolFullError()
             try:
                 self.pending_txns.add(txn)
             except SQLAlchemyError:

@@ -11,6 +11,7 @@ uncapped behavior only up to a small, safe bound and assert the missing cap
 is observable. No test exhausts real memory, disk, or wall-clock.
 """
 
+import contextlib
 import datetime
 import threading
 from unittest.mock import patch
@@ -21,6 +22,7 @@ import pytest
 from cancelchain.api_client import ApiClient
 from cancelchain.block import Block
 from cancelchain.chain import REWARD
+from cancelchain.exceptions import MempoolFullError
 from cancelchain.miller import Miller
 from cancelchain.payload import Inflow, Outflow, encode_subject
 from cancelchain.transaction import Transaction
@@ -109,20 +111,10 @@ def test_n1_fill_chain_has_no_depth_cap(app, time_machine, wallet) -> None:
         assert call_count[0] <= 3
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        'AUDIT N2: pending_txns mempool has no admission cap; an '
-        'authenticated TRANSACTOR floods unbounded distinct valid txns. '
-        'Remove this marker when receive_transaction enforces a configurable '
-        "cap (contract: app.config['MAX_PENDING_TXNS']) and "
-        'rejects/evicts past it.'
-    ),
-)
 def test_n2_mempool_has_no_admission_cap(app, time_machine, wallet) -> None:
-    """N2: the pending_txns mempool has no admission cap (node.py:95-102);
-    admission validation is shape+sig+txid only (no balance), so one
-    transactor floods unbounded distinct valid txns.
+    """N2 (regression): receive_transaction now enforces a configurable
+    MAX_PENDING_TXNS cap. Submissions past the cap raise MempoolFullError;
+    the pool never exceeds the configured limit.
 
     Remediation contract: a configurable cap app.config['MAX_PENDING_TXNS'].
     """
@@ -150,10 +142,9 @@ def test_n2_mempool_has_no_admission_cap(app, time_machine, wallet) -> None:
             t.set_wallet(wallet)
             t.seal()
             t.sign()
-            m.receive_transaction(t.txid, t.to_json())
+            with contextlib.suppress(MempoolFullError):
+                m.receive_transaction(t.txid, t.to_json())
 
-        # TODAY: no cap -> all 6 admitted -> len == 6 -> 6 <= 3 FALSE ->
-        # xfail. AFTER FIX: cap honored -> len <= 3 -> passes -> remove marker.
         assert len(m.pending_txns) <= 3
 
 
