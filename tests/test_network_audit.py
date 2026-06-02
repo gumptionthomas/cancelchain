@@ -11,6 +11,7 @@ uncapped behavior only up to a small, safe bound and assert the missing cap
 is observable. No test exhausts real memory, disk, or wall-clock.
 """
 
+import contextlib
 import datetime
 import threading
 from unittest.mock import patch
@@ -21,6 +22,7 @@ import pytest
 from cancelchain.api_client import ApiClient
 from cancelchain.block import Block
 from cancelchain.chain import REWARD
+from cancelchain.exceptions import MempoolFullError
 from cancelchain.miller import Miller
 from cancelchain.payload import Inflow, Outflow, encode_subject
 from cancelchain.transaction import Transaction
@@ -109,20 +111,10 @@ def test_n1_fill_chain_has_no_depth_cap(app, time_machine, wallet) -> None:
         assert call_count[0] <= 3
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        'AUDIT N2: pending_txns mempool has no admission cap; an '
-        'authenticated TRANSACTOR floods unbounded distinct valid txns. '
-        'Remove this marker when receive_transaction enforces a configurable '
-        "cap (contract: app.config['MAX_PENDING_TXNS']) and "
-        'rejects/evicts past it.'
-    ),
-)
 def test_n2_mempool_has_no_admission_cap(app, time_machine, wallet) -> None:
-    """N2: the pending_txns mempool has no admission cap (node.py:95-102);
-    admission validation is shape+sig+txid only (no balance), so one
-    transactor floods unbounded distinct valid txns.
+    """N2 (regression): receive_transaction now enforces a configurable
+    MAX_PENDING_TXNS cap. Submissions past the cap raise MempoolFullError;
+    the pool never exceeds the configured limit.
 
     Remediation contract: a configurable cap app.config['MAX_PENDING_TXNS'].
     """
@@ -150,10 +142,9 @@ def test_n2_mempool_has_no_admission_cap(app, time_machine, wallet) -> None:
             t.set_wallet(wallet)
             t.seal()
             t.sign()
-            m.receive_transaction(t.txid, t.to_json())
+            with contextlib.suppress(MempoolFullError):
+                m.receive_transaction(t.txid, t.to_json())
 
-        # TODAY: no cap -> all 6 admitted -> len == 6 -> 6 <= 3 FALSE ->
-        # xfail. AFTER FIX: cap honored -> len <= 3 -> passes -> remove marker.
         assert len(m.pending_txns) <= 3
 
 
@@ -359,3 +350,38 @@ def test_n1_request_block_rejects_forged_block_hash_field(
         # not -> rejected (without the computed-hash check this would have
         # let a hostile peer steer fill_chain with no PoW).
         assert m.request_block(requested) is None
+
+
+def test_n2_full_mempool_returns_503(
+    app, host, time_machine, requests_proxy, wallet
+):
+    """N2 (view layer): a valid txn submitted to a full mempool returns a
+    retryable 503, not a 400 -- the txn is well-formed and authorized; the
+    node is temporarily at capacity.
+    """
+    with app.app_context():
+        time_machine.move_to(now() - datetime.timedelta(hours=1))
+        app.config['MAX_PENDING_TXNS'] = 1
+        client = ApiClient(host, wallet)
+
+        def make_txn(i):
+            t = Transaction()
+            t.add_inflow(Inflow(outflow_txid='0' * 64, outflow_idx=0))
+            t.add_outflow(
+                Outflow(amount=1, subject=encode_subject(f's503-{i}'))
+            )
+            t.set_wallet(wallet)
+            t.seal()
+            t.sign()
+            return t
+
+        # Cap = 1: the first valid txn is admitted.
+        r1 = client.post_transaction(make_txn(0), raise_for_status=False)
+        assert r1.status_code in (
+            httpx.codes.OK,
+            httpx.codes.CREATED,
+            httpx.codes.ACCEPTED,
+        )
+        # The pool is now full -> the next valid txn is rejected with 503.
+        r2 = client.post_transaction(make_txn(1), raise_for_status=False)
+        assert r2.status_code == httpx.codes.SERVICE_UNAVAILABLE

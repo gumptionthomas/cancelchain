@@ -180,3 +180,7 @@ class MissingPreviousBlockError(InvalidChainError):
 
 class InvalidRoleConfigError(CCError):
     pass
+
+
+class MempoolFullError(CCError):
+    pass
