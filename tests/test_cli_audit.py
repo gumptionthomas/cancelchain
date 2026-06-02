@@ -50,9 +50,10 @@ def test_cli1_wallet_create_writes_private_key_0600(app, runner, tmp_path):
 
 @pytest.mark.xfail(
     strict=True,
-    reason='CLI4: `import` buffers an unbounded single line before parsing; '
-    'flips once a per-line size bound stops the full line reaching '
-    'Block.from_json.',
+    reason='CLI4: `import` buffers an unbounded single line — in BOTH the '
+    'count pass (sum(1 for line in f)) and the parse pass (Block.from_json). '
+    'A full fix must bound the line in both; this test observes the parse '
+    'pass and flips once the oversized line no longer reaches Block.from_json.',
 )
 def test_cli4_import_bounds_line_length(app, runner, tmp_path, monkeypatch):
     """CLI4 (Low) — `cancelchain import` reads the file line-by-line with no
