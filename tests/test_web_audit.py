@@ -24,15 +24,19 @@ def test_web1_security_headers_present(app, test_client):
     """WEB1 (Low) — HTML responses ship no security-hardening headers
     (`application.py` wires no `after_request`/Talisman). Desired: every HTML
     response carries CSP, X-Frame-Options, X-Content-Type-Options, and
-    Referrer-Policy. Served entirely in-process — no external network.
+    Referrer-Policy, and (on HTTPS) HSTS. Issued over an https base_url so
+    HSTS — which should only be set on secure requests — is exercised
+    alongside the always-on headers. Served entirely in-process — no external
+    network.
     """
     with app.app_context():
-        resp = test_client.get('/')
+        resp = test_client.get('/', base_url='https://localhost')
     assert resp.status_code == 200
     assert 'Content-Security-Policy' in resp.headers
     assert resp.headers.get('X-Content-Type-Options') == 'nosniff'
     assert resp.headers.get('X-Frame-Options') in ('DENY', 'SAMEORIGIN')
     assert 'Referrer-Policy' in resp.headers
+    assert 'Strict-Transport-Security' in resp.headers
 
 
 @pytest.mark.xfail(
