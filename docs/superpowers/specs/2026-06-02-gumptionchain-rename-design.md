@@ -62,7 +62,7 @@ These live outside the repository and are tracked as a checklist, not implemente
 - **GitHub repo** `gumptionthomas/cancelchain` → `…/gumptionchain` (GitHub auto-redirects old URLs; follow with `git remote set-url`).
 - **Domain** — main GumptionChain site to be hosted at **`gumption.com/chain`**; doc/blog endpoints derived as `gumption.com/chain/docs` and `gumption.com/chain/blog` (exact doc-hosting structure — e.g. Read the Docs vs. self-hosted — to be confirmed during the infra pass).
 - **Email** — `contact@` / `tom@cancelchain.org` → `gumption.com` addresses.
-- **GCS bucket** `blocks.cancelchain.org` and the chain export filename `cancelchain.jsonl` → `gumptionchain.jsonl`.
+- **Defunct hosted infra (no rename needed).** The GCS chain-export bucket (`blocks.cancelchain.org/cancelchain.jsonl`) and **The Cancel Button** (`thecancelbutton.com` — the reference node / account-registration site / PEM-key source) no longer exist. Rather than rename them, Phase 1 removes their references from the README: the hosted-download step is dropped (import is reworded around `gumptionchain export` output) and the Cancel Button onboarding is replaced with the email-request path and a generic `peer.example.com` / `CCYourWalletAddressCC` placeholder.
 
 **One code↔infra dependency:** the in-repo project URLs (pyproject `[project.urls]`, README links) are set in Phase 1 to their *final* targets under `gumption.com/chain`. The homepage is confirmed (`gumption.com/chain`); the `…/chain/docs` and `…/chain/blog` sub-paths are best-effort assumptions to be re-confirmed when the infra is stood up.
 

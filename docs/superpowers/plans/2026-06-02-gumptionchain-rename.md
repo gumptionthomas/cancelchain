@@ -571,7 +571,10 @@ Hand off to the owner; these live outside the repository:
 - [ ] Rename the GitHub repo `gumptionthomas/cancelchain` → `gumptionthomas/gumptionchain` (GitHub auto-redirects old URLs); then locally `git remote set-url origin git@github.com:gumptionthomas/gumptionchain.git`.
 - [ ] Stand up the GumptionChain site at `gumption.com/chain`; confirm the `…/chain/docs` and `…/chain/blog` paths used in `pyproject.toml` and `README.rst`, adjusting if doc hosting differs (e.g. Read the Docs).
 - [ ] Move/alias email `contact@` and `tom@cancelchain.org` → `gumption.com`.
-- [ ] Rename the GCS bucket `blocks.cancelchain.org` and the chain export filename `cancelchain.jsonl` → `gumptionchain.jsonl`; reconcile the README download link.
+
+**Defunct hosted infra (no rename — removed from the README in Phase 1):**
+- The GCS chain-export bucket (`blocks.cancelchain.org/cancelchain.jsonl`) no longer exists. The README's hosted-download step was removed and the import quick-start reworded to import any JSON Lines export (e.g. from `gumptionchain export`). No bucket to rename.
+- **The Cancel Button** (`thecancelbutton.com`) — the reference/demo node, account-registration site, and PEM-key source — is gone. Its onboarding flow and links were removed from the README and replaced with the email-request access path plus a generic `peer.example.com` / `CCYourWalletAddressCC` placeholder.
 
 ---
 
