@@ -28,12 +28,14 @@ There is **no production deployment and no legacy chain to preserve** (per proje
 | Conversion constant | `CURMUDGEON_PER_GRUMBLE` | `GRAIN_PER_GRIT` |
 | Conversion helper | `grumble_to_curmudgeons()` | `grit_to_grains()` |
 | Display helper | `human_curmudgeons()` | `human_grains()` |
+| Wallet address tag | `ADDRESS_TAG = 'CC'` (prefix **and** suffix) | `'GC'` |
 
 ### Rationale notes
 
 - **`gumptionchain` + `gc` alias:** the package-matching primary command stays explicit and conventional; the short `gc` alias serves daily use. Both entry points map to the same `gumptionchain:cli` callable.
 - **grit / grain:** "grit" is the cleanest one-word gumption synonym; "grain" is its *literal* subdivision (grit is physically composed of grains), so the major→minor relationship is a true English entailment, mirroring satoshi's "smallest indivisible piece" elegance. The chain's base integer unit is the minor unit (today `curmudgeons` → `grains`); the major unit is a display-layer denomination only.
 - **`GRIT` ticker (not `GRT`/`GCG`):** `GCG` is ambiguous (gri**t** vs gra**in** both start with G); `GRT` collides with The Graph's token symbol. The 4-letter `GRIT` is self-documenting and unambiguous (4-char tickers are common: DOGE, USDT, GALA).
+- **Address tag `CC` → `GC`:** `ADDRESS_TAG` (`wallet.py:24`) is affixed as both prefix and suffix to every wallet address (`schema.py:38-42` validates `startswith` AND `endswith`), so addresses read `CC…CC` today. This is the most identity-bearing surface in the system. It is safe to change outright because there is no legacy chain — newly generated addresses simply read `GC…GC`. This is the deepest-seated rename and gets its own phase.
 
 ## Scope
 
@@ -44,7 +46,8 @@ There is **no production deployment and no legacy chain to preserve** (per proje
 3. **Config contract** — the `CC_` → `GC_` env prefix and all references to `CC_*` variable names.
 4. **Signing protocol** — the `cc-sig-v1` scheme id and the five `CC-*` header-name constants, plus the protocol spec doc.
 5. **Currency units** — the grit/grain/`GRIT` symbol and string changes in `chain.py` and `command.py`.
-6. **Live branding** — `README.rst`, `CLAUDE.md`, and `docs/api-auth-protocol.md` prose/identifiers.
+6. **Wallet address tag** — `ADDRESS_TAG` in `wallet.py`, plus the hardcoded address literals in test fixtures (`tests/conftest.py` `WALLET_ADDRESS`, `tests/.test.env`) that must be regenerated to the `GC…GC` format.
+7. **Live branding** — `README.rst`, `CLAUDE.md`, and `docs/api-auth-protocol.md` prose/identifiers.
 
 ### Out of scope (deliberately not changed)
 
@@ -65,7 +68,7 @@ These live outside the repository and are tracked as a checklist, not implemente
 
 ## Phasing
 
-Each phase is one branch + PR, per project convention. **Phase 1 must land first** — every other phase edits files that import the package, so the namespace must move before the rest. Phases 2, 3, and 4 are mutually independent and may land in any order after Phase 1.
+Each phase is one branch + PR, per project convention. **Phase 1 must land first** — every other phase edits files that import the package, so the namespace must move before the rest. Phases 2, 3, and 4 are mutually independent and may land in any order after Phase 1. **Phase 5 depends on Phase 2** — both edit `tests/.test.env` (Phase 2 renames the keys `CC_*`→`GC_*`; Phase 5 changes the address *values*), so Phase 5 lands after Phase 2 to avoid a merge conflict.
 
 ### Phase 1 — Package + branding + CLI (the mechanical lift)
 
@@ -106,6 +109,17 @@ Each phase is one branch + PR, per project convention. **Phase 1 must land first
 
 **Verification gate:** full `uv run pytest`; manual check that `gumptionchain wallet balance` / subject-balance output renders `GRIT`.
 
+### Phase 5 — Wallet address tag `CC` → `GC` (depends on Phase 2)
+
+- `src/gumptionchain/wallet.py`: `ADDRESS_TAG = 'GC'`. (`validate_address_format` in `schema.py` reads the constant, so format validation tracks the change automatically — no edit there.)
+- `tests/conftest.py`: `WALLET_ADDRESS` — the hardcoded address derived from the fixed `WALLET_PRIVATE_KEY_B58`; recompute its `GC…GC` value (the new value is produced by a documented one-liner, not guessed).
+- `tests/.test.env`: the two reader addresses in the `*_READER_ADDRESSES` allowlist — regenerate as valid `GC…GC` addresses.
+- Any other hardcoded `CC…CC` address literal in `tests/`, `README.rst`, or live docs (surfaced by running the suite + a residual address-shaped grep).
+
+The four role wallets in `conftest.py` (`Wallet()` with random keys, injected into `*_ADDRESSES` config at runtime) recompute to `GC…GC` automatically and need no edits. The fixed-key `WALLET_SIGNATURE` signs the literal `'helloworld'` (not a canonical containing the address) and stays valid.
+
+**Verification gate:** full `uv run pytest`; residual grep for `CC[…]CC` address-shaped literals returns only historical-doc hits; manual `gumptionchain wallet create` shows a `GC…GC` address.
+
 ## Cross-phase risk & mitigation
 
 The dominant risk is a **missed import or string literal** — a rename that compiles but leaves a stale reference. Mitigation is a **residual grep sweep as each phase's completion gate**: after each phase, grepping the relevant token (`cancelchain`, `CC_`, `cc-sig`/`CC-`, `CCG`/`grumble`/`curmudgeon`) over tracked files must return **only** historical-doc hits (`docs/superpowers/{plans,specs,audits}`, `ROADMAP.md`). Any hit in `src/`, `tests/`, or live docs is an incomplete rename and blocks the phase.
@@ -118,4 +132,4 @@ No new behavior is introduced — this is a rename — so the existing suite is 
 
 ## Deliverable shape
 
-Four sequential PRs (Phase 1 first; 2–4 in any order after), each green on the full gate before merge, each followed by the standing Copilot-review backstop per project convention. External-infrastructure items are handed off as a checklist for the owner to execute outside the repo.
+Five PRs: Phase 1 first; 2–4 in any order after; Phase 5 after Phase 2. Each is green on the full gate before merge, each followed by the standing Copilot-review backstop per project convention. External-infrastructure items are handed off as a checklist for the owner to execute outside the repo.
