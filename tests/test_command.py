@@ -112,7 +112,7 @@ def run_txn_subject(runner, subject, txn_wallet, txn_wallet_file, confirm=True):
     return runner.invoke(
         args=[
             'txn',
-            'subject',
+            'opposition',
             txn_wallet.address,
             str(SUBJECT_GRIT),
             subject,
@@ -162,7 +162,7 @@ def run_txn_forgive(runner, subject, txn_wallet, txn_wallet_file, confirm=True):
     return runner.invoke(
         args=[
             'txn',
-            'forgive',
+            'rescind',
             txn_wallet.address,
             str(SUBJECT_GRIT),
             subject,
@@ -293,16 +293,16 @@ def test_subject_balance(
 ):
     with app.app_context():
         mill_block(wallet)
-        result = runner.invoke(args=['subject', 'balance', subject_raw])
+        result = runner.invoke(args=['subject', 'opposition', subject_raw])
         assert '0 GRIT' in result.output
         wf = get_wallet_file(wallet.address, app=app)
         run_txn_subject(runner, subject_raw, wallet, wf)
         mill_block(wallet)
-        result = runner.invoke(args=['subject', 'balance', subject_raw])
+        result = runner.invoke(args=['subject', 'opposition', subject_raw])
         assert f'{SUBJECT_GRIT} GRIT' in result.output
         run_txn_subject(runner, subject_raw, wallet, wf)
         mill_block(wallet)
-        result = runner.invoke(args=['subject', 'balance', subject_raw])
+        result = runner.invoke(args=['subject', 'opposition', subject_raw])
         assert f'{2 * SUBJECT_GRIT} GRIT' in result.output
 
 

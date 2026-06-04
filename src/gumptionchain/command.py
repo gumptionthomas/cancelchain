@@ -709,7 +709,7 @@ def create_transfer(
         console.print(f'Transfer failed: {e}', style='error')
 
 
-@txn_cli.command('subject')
+@txn_cli.command('opposition')
 @click.argument('address')
 @click.argument('amount', type=click.FLOAT)
 @click.argument('subject')
@@ -741,7 +741,7 @@ def create_transfer(
     help='Assume "yes" as answer to all prompts and run non-interactively.',
 )
 @with_appcontext
-def create_subject(
+def create_opposition(
     address: str,
     amount: float,
     subject: str,
@@ -784,7 +784,7 @@ def create_subject(
         console.print(f'Subject failed: {e}', style='error')
 
 
-@txn_cli.command('forgive')
+@txn_cli.command('rescind')
 @click.argument('address')
 @click.argument('amount', type=click.FLOAT)
 @click.argument('subject')
@@ -816,7 +816,7 @@ def create_subject(
     help='Assume "yes" as answer to all prompts and run non-interactively.',
 )
 @with_appcontext
-def create_forgive(
+def create_rescind(
     address: str,
     amount: float,
     subject: str,
@@ -990,7 +990,7 @@ def wallet_balance(address: str, host: str | None, wallet: str | None) -> None:
 subject_cli = AppGroup('subject', help='Command group to work with subjects.')
 
 
-@subject_cli.command('balance')
+@subject_cli.command('opposition')
 @click.argument('subject')
 @click.option(
     '-h',
@@ -1006,7 +1006,9 @@ subject_cli = AppGroup('subject', help='Command group to work with subjects.')
     help='Wallet file to use for API auth.',
 )
 @with_appcontext
-def subject_balance(subject: str, host: str | None, wallet: str | None) -> None:
+def opposition_balance(
+    subject: str, host: str | None, wallet: str | None
+) -> None:
     """Get the balance (i.e. subject transactions minus forgiveness
        transactions) in GRIT for a subject.
 
