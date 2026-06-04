@@ -476,7 +476,7 @@ class SubjectTxnQueryModel(BaseModel):
     subject: _RawSubjectField
 
 
-class SubjectTxnView(MethodView):
+class OppositionTxnView(MethodView):
     def get(self, **kwargs: Any) -> Response:
         try:
             model = SubjectTxnQueryModel.model_validate(
@@ -503,15 +503,15 @@ class SubjectTxnView(MethodView):
 
 
 blueprint.add_url_rule(
-    '/transaction/subject',
+    '/transaction/opposition',
     view_func=authorize_transactor(
-        SubjectTxnView.as_view('txn_subject_transactor')
+        OppositionTxnView.as_view('txn_opposition_transactor')
     ),
     methods=['GET'],
 )
 
 
-class ForgiveTxnView(MethodView):
+class RescindTxnView(MethodView):
     def get(self, **kwargs: Any) -> Response:
         try:
             model = SubjectTxnQueryModel.model_validate(
@@ -538,9 +538,9 @@ class ForgiveTxnView(MethodView):
 
 
 blueprint.add_url_rule(
-    '/transaction/forgive',
+    '/transaction/rescind',
     view_func=authorize_transactor(
-        ForgiveTxnView.as_view('txn_forgive_transactor')
+        RescindTxnView.as_view('txn_rescind_transactor')
     ),
     methods=['GET'],
 )
@@ -653,7 +653,7 @@ blueprint.add_url_rule(
 )
 
 
-class SubjectBalanceView(MethodView):
+class OppositionBalanceView(MethodView):
     def get(self, subject: str, **kwargs: Any) -> Response:
         try:
             _, lc, _ = node_lc_dao()
@@ -674,9 +674,9 @@ class SubjectBalanceView(MethodView):
 
 
 blueprint.add_url_rule(
-    '/subject/<subject:subject>/balance',
+    '/subject/<subject:subject>/opposition',
     view_func=authorize_reader(
-        SubjectBalanceView.as_view('subject_balance_transactor')
+        OppositionBalanceView.as_view('opposition_balance_transactor')
     ),
     methods=['GET'],
 )

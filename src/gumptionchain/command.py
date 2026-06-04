@@ -760,7 +760,7 @@ def create_subject(
     try:
         txn_wallet_obj = address_wallet(address, wallet_file=txn_wallet)
         client = host_api_client(host=host, wallet_file=wallet)
-        r = client.get_subject_transaction(
+        r = client.get_opposition_transaction(
             txn_wallet_obj.public_key_b64,
             grit_to_grains(amount),
             subject,
@@ -835,7 +835,7 @@ def create_forgive(
     try:
         txn_wallet_obj = address_wallet(address, wallet_file=txn_wallet)
         client = host_api_client(host=host, wallet_file=wallet)
-        r = client.get_forgive_transaction(
+        r = client.get_rescind_transaction(
             txn_wallet_obj.public_key_b64,
             grit_to_grains(amount),
             subject,
@@ -1015,7 +1015,7 @@ def subject_balance(subject: str, host: str | None, wallet: str | None) -> None:
     """
     try:
         client = host_api_client(host=host, wallet_file=wallet)
-        r = client.get_subject_balance(encode_subject(subject))
+        r = client.get_opposition_balance(encode_subject(subject))
         balance = r.json().get('balance')
         console.print(f'{human_grains(balance)} GRIT', style='success')
     except httpx.HTTPStatusError as e:
@@ -1050,7 +1050,7 @@ def support_balance(subject: str, host: str | None, wallet: str | None) -> None:
     """
     try:
         client = host_api_client(host=host, wallet_file=wallet)
-        r = client.get_subject_support(encode_subject(subject))
+        r = client.get_support_balance(encode_subject(subject))
         support = r.json().get('support')
         console.print(f'{human_grains(support)} GRIT', style='success')
     except httpx.HTTPStatusError as e:
