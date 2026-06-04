@@ -374,13 +374,13 @@ class Chain:
             if limit is not None and amount >= limit:
                 break
 
-    def unforgiven_outflows(
+    def unrescinded_outflows(
         self,
         subject: str,
         filter_pending: bool = False,  # noqa: FBT001
     ) -> Iterator[tuple[str, int, Outflow]]:
         outflow_daos = db.session.execute(
-            self.to_dao().unforgiven_outflows(
+            self.to_dao().unrescinded_outflows(
                 subject, filter_pending=filter_pending
             )
         ).scalars()
@@ -392,7 +392,7 @@ class Chain:
                 continue
             yield (outflow_dao.txid, outflow_dao.idx, outflow)
 
-    def unforgiven_address_outflows(
+    def unrescinded_address_outflows(
         self,
         address: str,
         subject: str,
@@ -401,7 +401,7 @@ class Chain:
     ) -> Iterator[tuple[str, int, Outflow]]:
         amount = 0
         outflow_daos = db.session.execute(
-            self.to_dao().unforgiven_outflows(
+            self.to_dao().unrescinded_outflows(
                 subject, address=address, filter_pending=filter_pending
             )
         ).scalars()
@@ -419,11 +419,11 @@ class Chain:
     def balance(self, address: str) -> int:
         return int(self.to_dao().wallet_balance(address))
 
-    def subject_balance(self, subject: str) -> int:
-        return int(self.to_dao().subject_balance(subject))
+    def opposition_balance(self, subject: str) -> int:
+        return int(self.to_dao().opposition_balance(subject))
 
-    def subject_support(self, subject: str) -> int:
-        return int(self.to_dao().subject_support(subject))
+    def support_balance(self, subject: str) -> int:
+        return int(self.to_dao().support_balance(subject))
 
     def create_transfer(
         self, wallet: Wallet, amount: int, dest_address: str
@@ -490,10 +490,10 @@ class Chain:
         address = wallet.address
         balance = 0
         t = Transaction()
-        unforgiven = self.unforgiven_address_outflows(
+        unrescinded = self.unrescinded_address_outflows(
             address, subject, limit=amount, filter_pending=True
         )
-        for txid, index, outflow in unforgiven:
+        for txid, index, outflow in unrescinded:
             balance += outflow.amount or 0
             t.add_inflow(Inflow(outflow_txid=txid, outflow_idx=index))
         if balance < amount:

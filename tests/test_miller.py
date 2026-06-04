@@ -218,7 +218,7 @@ def test_subject_forgive_txns(app, subject, time_machine, wallet):
         m.receive_transaction(t0.txid, t0.to_json())
         b1 = m.create_block()
         m.mill_block(b1)
-        assert m.longest_chain.subject_balance(subject) == amount
+        assert m.longest_chain.opposition_balance(subject) == amount
         when_dt += datetime.timedelta(minutes=1)
         time_machine.move_to(when_dt)
         t1 = m.longest_chain.create_rescind(wallet, amount, subject)
@@ -226,7 +226,7 @@ def test_subject_forgive_txns(app, subject, time_machine, wallet):
         m.receive_transaction(t1.txid, t1.to_json())
         b2 = m.create_block()
         m.mill_block(b2)
-        assert m.longest_chain.subject_balance(subject) == 0
+        assert m.longest_chain.opposition_balance(subject) == 0
 
 
 def test_invalid_subject_forgive_txns(app, subject, time_machine, wallet):

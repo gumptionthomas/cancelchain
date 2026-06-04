@@ -662,7 +662,7 @@ class SubjectBalanceView(MethodView):
             block_hash = lc.block_hash
             key = f'{block_hash}.{subject}.balance'
             if (balance := cache.get(key)) is None:
-                balance = lc.subject_balance(subject)
+                balance = lc.opposition_balance(subject)
                 cache.set(key, balance)
             return make_json_response(
                 {'balance': balance, 'as_of_block': block_hash}
@@ -691,7 +691,7 @@ class SubjectSupportView(MethodView):
             block_hash = lc.block_hash
             key = f'{block_hash}.{subject}.support'
             if (support := cache.get(key)) is None:
-                support = lc.subject_support(subject)
+                support = lc.support_balance(subject)
                 cache.set(key, support)
             return make_json_response(
                 {'support': support, 'as_of_block': block_hash}

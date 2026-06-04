@@ -566,7 +566,7 @@ class ChainDAO(Base):
         )
         return db.session.scalar(sum_stmt) or 0
 
-    def unforgiven_outflows(
+    def unrescinded_outflows(
         self,
         subject: str,
         address: str | None = None,
@@ -584,7 +584,7 @@ class ChainDAO(Base):
             stmt = stmt.where(~OutflowDAO.pending.any())
         return stmt
 
-    def subject_balance(self, subject: str) -> int:
+    def opposition_balance(self, subject: str) -> int:
         inflows_alias = db.aliased(InflowDAO, self.inflows.subquery())
         stmt = self.outflows.where(OutflowDAO.opposition == subject)
         stmt = stmt.join(inflows_alias, OutflowDAO.inflows, isouter=True)
@@ -595,7 +595,7 @@ class ChainDAO(Base):
         )
         return db.session.scalar(sum_stmt) or 0
 
-    def subject_support(self, subject: str) -> int:
+    def support_balance(self, subject: str) -> int:
         stmt = self.outflows.where(OutflowDAO.support == subject)
         outflows_alias = db.aliased(OutflowDAO, stmt.subquery())
         sum_stmt = db.select(db.func.sum(OutflowDAO.amount)).join(

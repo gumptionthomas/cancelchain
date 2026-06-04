@@ -63,7 +63,7 @@ def test_unspent_outflows(app, subject, time_stepper, wallet):
         assert _count_select(dao_a.unspent_outflows(wallet.address)) == 2
         balance = int(1.5 * chain_a.block_reward())
         assert dao_a.wallet_balance(wallet.address) == balance
-        assert dao_a.subject_balance(subject) == cb_1_amount
+        assert dao_a.opposition_balance(subject) == cb_1_amount
 
         _ = next(time_step)
         chain_b = Chain()
@@ -82,12 +82,12 @@ def test_unspent_outflows(app, subject, time_stepper, wallet):
         assert _count_select(dao_b.unspent_outflows(wallet.address)) == 2
         balance = 2 * chain_b.block_reward()
         assert dao_b.wallet_balance(wallet.address) == balance
-        assert dao_b.subject_balance(subject) == 0
+        assert dao_b.opposition_balance(subject) == 0
 
         assert _count_select(dao_a.unspent_outflows(wallet.address)) == 2
         balance = int(1.5 * chain_a.block_reward())
         assert dao_a.wallet_balance(wallet.address) == balance
-        assert dao_a.subject_balance(subject) == cb_1_amount
+        assert dao_a.opposition_balance(subject) == cb_1_amount
 
 
 def test_longest_chain_block_bootstrap(app, mill_block, wallet):
