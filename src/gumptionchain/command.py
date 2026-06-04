@@ -5,7 +5,7 @@ import os
 from collections.abc import Generator
 from datetime import timedelta
 from http.client import responses
-from typing import Any
+from typing import Any, Literal, cast
 
 import click
 import httpx
@@ -791,6 +791,12 @@ def create_opposition(
 @click.argument('amount', type=click.FLOAT)
 @click.argument('subject')
 @click.option(
+    '--kind',
+    type=click.Choice(['opposition', 'support']),
+    required=True,
+    help='Which stake to rescind: opposition or support.',
+)
+@click.option(
     '-t',
     '--txn-wallet',
     type=click.Path(exists=True),
@@ -822,6 +828,7 @@ def create_rescind(
     address: str,
     amount: float,
     subject: str,
+    kind: str,  # narrowed via cast below; click.Choice enforces the values
     txn_wallet: str | None,
     host: str | None,
     wallet: str | None,
@@ -841,6 +848,7 @@ def create_rescind(
             txn_wallet_obj.public_key_b64,
             grit_to_grains(amount),
             subject,
+            cast(Literal['opposition', 'support'], kind),
         )
         txn = Transaction.from_json(r.text)
         if not (confirm := yes):

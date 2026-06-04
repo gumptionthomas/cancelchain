@@ -16,6 +16,7 @@ from gumptionchain.exceptions import (
     FutureBlockError,
     ImbalancedTransactionError,
     InflowOutflowAddressMismatchError,
+    InsufficientFundsError,
     InvalidBlockError,
     InvalidBlockIndexError,
     InvalidChainError,
@@ -592,7 +593,11 @@ def test_validate_block_coinbase(add_chain_block, app, subject, txid, wallet):
 
         t2 = Transaction()
         t2.add_inflow(Inflow(outflow_txid=t.txid, outflow_idx=0))
-        t2.add_outflow(Outflow(amount=cb_amount, rescind=subject))
+        t2.add_outflow(
+            Outflow(
+                amount=cb_amount, rescind=subject, rescind_kind='opposition'
+            )
+        )
         t2.set_wallet(wallet)
         t2.seal()
         t2.sign()
@@ -669,7 +674,11 @@ def test_validate_opposition_ioflows(app, subject, wallet):
         chain.link_block(block3)
         t2 = Transaction()
         t2.add_inflow(Inflow(outflow_txid=t.txid, outflow_idx=0))
-        t2.add_outflow(Outflow(amount=cb_amount, rescind=subject))
+        t2.add_outflow(
+            Outflow(
+                amount=cb_amount, rescind=subject, rescind_kind='opposition'
+            )
+        )
         t2.set_wallet(wallet)
         t2.seal()
         t2.sign()
@@ -677,6 +686,236 @@ def test_validate_opposition_ioflows(app, subject, wallet):
         chain.seal_block(block3, wallet)
         block3.mill()
         chain.add_block(block3)
+
+
+def test_rescind_support_drops_support_balance(
+    add_chain_block, app, subject, time_stepper, wallet
+):
+    with app.app_context():
+        time_step = time_stepper(start=now() - datetime.timedelta(hours=1))
+        _ = next(time_step)
+        chain, block = add_chain_block()
+        cb = block.coinbase
+        amt = next(iter(cb.outflows)).amount
+
+        # stake support
+        _ = next(time_step)
+        t_support = Transaction()
+        t_support.add_inflow(Inflow(outflow_txid=cb.txid, outflow_idx=0))
+        t_support.add_outflow(Outflow(amount=amt, support=subject))
+        t_support.set_wallet(wallet)
+        t_support.seal()
+        t_support.sign()
+        block2 = Block()
+        block2.add_txn(t_support)
+        add_chain_block(chain=chain, block=block2)
+        chain.to_db()
+        assert chain.support_balance(subject) == amt
+
+        # rescind support
+        _ = next(time_step)
+        rescind_txn = chain.create_rescind(wallet, amt, subject, 'support')
+        rescind_txn.sign()
+        block3 = Block()
+        block3.add_txn(rescind_txn)
+        add_chain_block(chain=chain, block=block3)
+        chain.to_db()
+        assert chain.support_balance(subject) == 0
+
+
+def test_support_rescind_mints_regret(
+    add_chain_block, app, subject, time_stepper, wallet
+):
+    """Block with a support-rescind txn mints regret == rescind_amount // 2."""
+    with app.app_context():
+        time_step = time_stepper(start=now() - datetime.timedelta(hours=1))
+        _ = next(time_step)
+        chain, block = add_chain_block()
+        cb = block.coinbase
+        amt = next(iter(cb.outflows)).amount
+
+        # stake support
+        _ = next(time_step)
+        t_support = Transaction()
+        t_support.add_inflow(Inflow(outflow_txid=cb.txid, outflow_idx=0))
+        t_support.add_outflow(Outflow(amount=amt, support=subject))
+        t_support.set_wallet(wallet)
+        t_support.seal()
+        t_support.sign()
+        block2 = Block()
+        block2.add_txn(t_support)
+        add_chain_block(chain=chain, block=block2)
+        chain.to_db()
+
+        # rescind support — amt is even (genesis reward), so // 2 is exact
+        _ = next(time_step)
+        rescind_txn = chain.create_rescind(wallet, amt, subject, 'support')
+        rescind_txn.sign()
+        block3 = Block()
+        block3.add_txn(rescind_txn)
+        _, milled_block = add_chain_block(chain=chain, block=block3)
+
+        expected_regret = amt // 2
+        assert milled_block.regret == expected_regret
+        coinbase_outflows = list(milled_block.coinbase.outflows)
+        regret_outflows = [
+            o for o in coinbase_outflows if o.address == wallet.address
+        ]
+        assert any(o.amount == expected_regret for o in regret_outflows)
+
+
+def test_rescind_support_insufficient_when_only_opposition(
+    add_chain_block, app, subject, time_stepper, wallet
+):
+    with app.app_context():
+        time_step = time_stepper(start=now() - datetime.timedelta(hours=1))
+        _ = next(time_step)
+        chain, block = add_chain_block()
+        cb = block.coinbase
+        amt = next(iter(cb.outflows)).amount
+
+        # stake opposition only
+        _ = next(time_step)
+        t_opp = Transaction()
+        t_opp.add_inflow(Inflow(outflow_txid=cb.txid, outflow_idx=0))
+        t_opp.add_outflow(Outflow(amount=amt, opposition=subject))
+        t_opp.set_wallet(wallet)
+        t_opp.seal()
+        t_opp.sign()
+        block2 = Block()
+        block2.add_txn(t_opp)
+        add_chain_block(chain=chain, block=block2)
+        chain.to_db()
+
+        # trying to rescind 'support' when only opposition was staked → error
+        with pytest.raises(InsufficientFundsError):
+            chain.create_rescind(wallet, amt, subject, 'support')
+
+
+def test_rescind_kind_mismatch_rejected(
+    add_chain_block, app, subject, time_stepper, wallet
+):
+    """Cross-kind rescind (support outflow, opposition kind) is rejected."""
+    with app.app_context():
+        time_step = time_stepper(start=now() - datetime.timedelta(hours=1))
+        _ = next(time_step)
+        chain, block = add_chain_block()
+        cb = block.coinbase
+        amt = next(iter(cb.outflows)).amount
+
+        # stake support
+        _ = next(time_step)
+        t_support = Transaction()
+        t_support.add_inflow(Inflow(outflow_txid=cb.txid, outflow_idx=0))
+        t_support.add_outflow(Outflow(amount=amt, support=subject))
+        t_support.set_wallet(wallet)
+        t_support.seal()
+        t_support.sign()
+        block2 = Block()
+        block2.add_txn(t_support)
+        add_chain_block(chain=chain, block=block2)
+        chain.to_db()
+
+        # hand-build a cross-kind rescind: consumes support outflow but
+        # claims kind='opposition', misrouting to the opposition pool
+        _ = next(time_step)
+        bad_rescind = Transaction()
+        bad_rescind.add_inflow(
+            Inflow(outflow_txid=t_support.txid, outflow_idx=0)
+        )
+        bad_rescind.add_outflow(
+            Outflow(amount=amt, rescind=subject, rescind_kind='opposition')
+        )
+        bad_rescind.set_wallet(wallet)
+        bad_rescind.seal()
+        bad_rescind.sign()
+        block3 = Block()
+        block3.add_txn(bad_rescind)
+        chain.link_block(block3)
+        chain.seal_block(block3, wallet)
+        block3.mill()
+        with pytest.raises(ImbalancedTransactionError):
+            chain.add_block(block3)
+
+
+def test_support_outflow_cannot_reach_address(
+    add_chain_block, app, subject, time_stepper, wallet
+):
+    """Staked support grains cannot be claimed to a wallet address."""
+    with app.app_context():
+        time_step = time_stepper(start=now() - datetime.timedelta(hours=1))
+        _ = next(time_step)
+        chain, block = add_chain_block()
+        cb = block.coinbase
+        amt = next(iter(cb.outflows)).amount
+
+        # stake support
+        _ = next(time_step)
+        t_support = Transaction()
+        t_support.add_inflow(Inflow(outflow_txid=cb.txid, outflow_idx=0))
+        t_support.add_outflow(Outflow(amount=amt, support=subject))
+        t_support.set_wallet(wallet)
+        t_support.seal()
+        t_support.sign()
+        block2 = Block()
+        block2.add_txn(t_support)
+        add_chain_block(chain=chain, block=block2)
+        chain.to_db()
+
+        # try to reclaim support grains to a wallet address
+        _ = next(time_step)
+        bad_txn = Transaction()
+        bad_txn.add_inflow(Inflow(outflow_txid=t_support.txid, outflow_idx=0))
+        bad_txn.add_outflow(Outflow(amount=amt, address=wallet.address))
+        bad_txn.set_wallet(wallet)
+        bad_txn.seal()
+        bad_txn.sign()
+        block3 = Block()
+        block3.add_txn(bad_txn)
+        chain.link_block(block3)
+        chain.seal_block(block3, wallet)
+        block3.mill()
+        with pytest.raises(ImbalancedTransactionError):
+            chain.add_block(block3)
+
+
+def test_partial_support_rescind_change_back(
+    add_chain_block, app, subject, time_stepper, wallet
+):
+    """Partial rescind of support keeps remainder in the support pool."""
+    with app.app_context():
+        time_step = time_stepper(start=now() - datetime.timedelta(hours=1))
+        _ = next(time_step)
+        chain, block = add_chain_block()
+        cb = block.coinbase
+        amt = next(iter(cb.outflows)).amount
+        # use an even amount so the halving is exact
+        assert amt % 2 == 0, 'REWARD must be even for this test'
+        half = amt // 2
+
+        # stake support
+        _ = next(time_step)
+        t_support = Transaction()
+        t_support.add_inflow(Inflow(outflow_txid=cb.txid, outflow_idx=0))
+        t_support.add_outflow(Outflow(amount=amt, support=subject))
+        t_support.set_wallet(wallet)
+        t_support.seal()
+        t_support.sign()
+        block2 = Block()
+        block2.add_txn(t_support)
+        add_chain_block(chain=chain, block=block2)
+        chain.to_db()
+        assert chain.support_balance(subject) == amt
+
+        # rescind half
+        _ = next(time_step)
+        rescind_txn = chain.create_rescind(wallet, half, subject, 'support')
+        rescind_txn.sign()
+        block3 = Block()
+        block3.add_txn(rescind_txn)
+        add_chain_block(chain=chain, block=block3)
+        chain.to_db()
+        assert chain.support_balance(subject) == amt - half
 
 
 def test_to_dao_create_without_block_hash_raises():

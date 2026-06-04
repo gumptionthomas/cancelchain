@@ -5,7 +5,7 @@ import json
 from collections.abc import Generator, Iterator
 from dataclasses import dataclass, field
 from functools import total_ordering
-from typing import Any, Self
+from typing import Any, Literal, Self
 
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -212,25 +212,39 @@ class Chain:
         txn: Transaction,
         txn_in_block: bool = True,  # noqa: FBT001
     ) -> None:
-        # add inflow amounts
+        # add inflow amounts, routed by the kind of the consumed outflow
         opposition_amounts: dict[str, int] = {}
+        support_amounts: dict[str, int] = {}
         other_amounts = 0
         for i in txn.inflows:
-            amount, subject = self.validate_txn_inflow(
+            amount, opposition, support = self.validate_txn_inflow(
                 block, txn, i, txn_in_block=txn_in_block
             )
-            if subject:
-                opposition_amount: int | None = opposition_amounts.get(
-                    subject, 0
+            if opposition:
+                opposition_amounts[opposition] = (
+                    opposition_amounts.get(opposition, 0) + amount
                 )
-                opposition_amounts[subject] = (opposition_amount or 0) + amount
+            elif support:
+                support_amounts[support] = (
+                    support_amounts.get(support, 0) + amount
+                )
             else:
                 other_amounts += amount
         # subtract outflow amounts
         for o in txn.outflows:
             if o.rescind:
-                rescind_amount = opposition_amounts.get(o.rescind, 0)
-                opposition_amounts[o.rescind] = rescind_amount - (o.amount or 0)
+                # rescind_kind is validated to 'opposition'|'support' by
+                # OutflowModel; reject anything else defensively.
+                if o.rescind_kind == 'support':
+                    support_amounts[o.rescind] = support_amounts.get(
+                        o.rescind, 0
+                    ) - (o.amount or 0)
+                elif o.rescind_kind == 'opposition':
+                    opposition_amounts[o.rescind] = opposition_amounts.get(
+                        o.rescind, 0
+                    ) - (o.amount or 0)
+                else:
+                    raise ImbalancedTransactionError()
             elif o.opposition:
                 opposition_amount = opposition_amounts.get(o.opposition)
                 if opposition_amount and opposition_amount > 0:
@@ -243,11 +257,26 @@ class Chain:
                         )
                 else:
                     other_amounts -= o.amount or 0
+            elif o.support:
+                support_amount = support_amounts.get(o.support)
+                if support_amount and support_amount > 0:
+                    if (o.amount or 0) > support_amount:
+                        support_amounts[o.support] = 0
+                        other_amounts -= (o.amount or 0) - support_amount
+                    else:
+                        support_amounts[o.support] = support_amount - (
+                            o.amount or 0
+                        )
+                else:
+                    other_amounts -= o.amount or 0
             else:
                 other_amounts -= o.amount or 0
         if other_amounts != 0:
             raise ImbalancedTransactionError()
         for _, amount in opposition_amounts.items():
+            if amount != 0:
+                raise ImbalancedTransactionError()
+        for _, amount in support_amounts.items():
             if amount != 0:
                 raise ImbalancedTransactionError()
 
@@ -257,7 +286,7 @@ class Chain:
         txn: Transaction,
         i: Inflow,
         txn_in_block: bool = True,  # noqa: FBT001
-    ) -> tuple[int, str | None]:
+    ) -> tuple[int, str | None, str | None]:
         # txn inflow's outflow exists
         ioflow: Outflow | None = None
         ioflow_txn: Transaction | None = None
@@ -267,8 +296,8 @@ class Chain:
                 ioflow = ioflow_txn.get_outflow(i.outflow_idx or 0)
         if not ioflow:
             raise MissingInflowOutflowError()
-        # inflow's outflow can't be for rescind or support
-        if ioflow.rescind is not None or ioflow.support is not None:
+        # a rescind outflow is terminal and can never be consumed
+        if ioflow.rescind is not None:
             raise InvalidInflowOutflowError()
         # inflow's outflow address equals the txn address
         address = (
@@ -284,7 +313,7 @@ class Chain:
         )
         if num_inflows > 1 or (num_inflows > 0 and not txn_in_block):
             raise SpentTransactionError()
-        return ioflow.amount or 0, ioflow.opposition
+        return ioflow.amount or 0, ioflow.opposition, ioflow.support
 
     def validate_block_coinbase(self, block: Block) -> None:
         block.validate_coinbase()
@@ -377,11 +406,12 @@ class Chain:
     def unrescinded_outflows(
         self,
         subject: str,
+        kind: Literal['opposition', 'support'],
         filter_pending: bool = False,  # noqa: FBT001
     ) -> Iterator[tuple[str, int, Outflow]]:
         outflow_daos = db.session.execute(
             self.to_dao().unrescinded_outflows(
-                subject, filter_pending=filter_pending
+                subject, kind, filter_pending=filter_pending
             )
         ).scalars()
         for outflow_dao in outflow_daos:
@@ -396,13 +426,14 @@ class Chain:
         self,
         address: str,
         subject: str,
+        kind: Literal['opposition', 'support'],
         limit: int | None = None,
         filter_pending: bool = False,  # noqa: FBT001
     ) -> Iterator[tuple[str, int, Outflow]]:
         amount = 0
         outflow_daos = db.session.execute(
             self.to_dao().unrescinded_outflows(
-                subject, address=address, filter_pending=filter_pending
+                subject, kind, address=address, filter_pending=filter_pending
             )
         ).scalars()
         for outflow_dao in outflow_daos:
@@ -485,22 +516,32 @@ class Chain:
         return t
 
     def create_rescind(
-        self, wallet: Wallet, amount: int, subject: str
+        self,
+        wallet: Wallet,
+        amount: int,
+        subject: str,
+        kind: Literal['opposition', 'support'],
     ) -> Transaction:
         address = wallet.address
         balance = 0
         t = Transaction()
         unrescinded = self.unrescinded_address_outflows(
-            address, subject, limit=amount, filter_pending=True
+            address, subject, kind, limit=amount, filter_pending=True
         )
         for txid, index, outflow in unrescinded:
             balance += outflow.amount or 0
             t.add_inflow(Inflow(outflow_txid=txid, outflow_idx=index))
         if balance < amount:
             raise InsufficientFundsError()
-        t.add_outflow(Outflow(amount=amount, rescind=subject))
+        t.add_outflow(
+            Outflow(amount=amount, rescind=subject, rescind_kind=kind)
+        )
         if balance - amount:
-            t.add_outflow(Outflow(amount=balance - amount, opposition=subject))
+            change = balance - amount
+            if kind == 'support':
+                t.add_outflow(Outflow(amount=change, support=subject))
+            else:
+                t.add_outflow(Outflow(amount=change, opposition=subject))
         t.set_wallet(wallet)
         t.seal()
         return t

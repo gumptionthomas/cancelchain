@@ -109,7 +109,7 @@ class RegularTransactionModel(TransactionModel):
 
 class CoinbaseTransactionModel(TransactionModel):
     inflows: Annotated[list[InflowModel], Field(min_length=0, max_length=0)]
-    outflows: Annotated[list[OutflowModel], Field(min_length=1, max_length=4)]
+    outflows: Annotated[list[OutflowModel], Field(min_length=1, max_length=5)]
     # Coinbases must carry their block's prev_hash binding.
     prev_hash: MillHashType
 
@@ -174,6 +174,10 @@ class Transaction:
     @property
     def mudita(self) -> int:
         return sum([o.mudita for o in self.outflows])
+
+    @property
+    def regret(self) -> int:
+        return sum([o.regret for o in self.outflows])
 
     def set_wallet(self, wallet: Wallet) -> None:
         self.wallet = wallet
@@ -285,6 +289,7 @@ class Transaction:
                     opposition=outflow.opposition,
                     rescind=outflow.rescind,
                     support=outflow.support,
+                    rescind_kind=outflow.rescind_kind,
                 )
                 for idx, outflow in enumerate(self.outflows)
             ],
@@ -337,6 +342,7 @@ class Transaction:
                     opposition=outflow_dao.opposition,
                     rescind=outflow_dao.rescind,
                     support=outflow_dao.support,
+                    rescind_kind=outflow_dao.rescind_kind,
                 )
                 for outflow_dao in dao.outflows
             ],
@@ -356,6 +362,7 @@ class Transaction:
         schadenfreude: int,
         grace: int,
         mudita: int,
+        regret: int,
         prev_hash: str,
     ) -> Self:
         outflows: list[Outflow] = []
@@ -369,6 +376,8 @@ class Transaction:
             outflows.append(Outflow(amount=grace, address=wallet.address))
         if mudita:
             outflows.append(Outflow(amount=mudita, address=wallet.address))
+        if regret:
+            outflows.append(Outflow(amount=regret, address=wallet.address))
         cb = cls(outflows=outflows, prev_hash=prev_hash)
         cb.set_wallet(wallet)
         cb.seal()

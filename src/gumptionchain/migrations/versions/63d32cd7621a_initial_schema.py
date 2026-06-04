@@ -110,6 +110,7 @@ def upgrade():
     sa.Column('opposition', sa.String(length=500), nullable=True),
     sa.Column('rescind', sa.String(length=500), nullable=True),
     sa.Column('support', sa.String(length=500), nullable=True),
+    sa.Column('rescind_kind', sa.String(length=16), nullable=True),
     sa.Column('transaction_id', sa.Integer(), nullable=False),
     sa.ForeignKeyConstraint(['transaction_id'], ['transaction.id'], name=op.f('fk_outflow_transaction_transaction_id')),
     sa.PrimaryKeyConstraint('id', name=op.f('pk_outflow')),

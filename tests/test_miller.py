@@ -221,7 +221,9 @@ def test_opposition_rescind_txns(app, subject, time_machine, wallet):
         assert m.longest_chain.opposition_balance(subject) == amount
         when_dt += datetime.timedelta(minutes=1)
         time_machine.move_to(when_dt)
-        t1 = m.longest_chain.create_rescind(wallet, amount, subject)
+        t1 = m.longest_chain.create_rescind(
+            wallet, amount, subject, 'opposition'
+        )
         t1.sign()
         m.receive_transaction(t1.txid, t1.to_json())
         b2 = m.create_block()
@@ -253,8 +255,12 @@ def test_invalid_opposition_rescind_txns(app, subject, time_machine, wallet):
         when_dt += datetime.timedelta(minutes=1)
         time_machine.move_to(when_dt)
         with pytest.raises(InsufficientFundsError):
-            t1 = m.longest_chain.create_rescind(wallet, amount + 1, subject)
-        t1 = m.longest_chain.create_rescind(wallet, amount - 1, subject)
+            t1 = m.longest_chain.create_rescind(
+                wallet, amount + 1, subject, 'opposition'
+            )
+        t1 = m.longest_chain.create_rescind(
+            wallet, amount - 1, subject, 'opposition'
+        )
         t1.sign()
         m.receive_transaction(t1.txid, t1.to_json())
         b2 = m.create_block()
@@ -263,8 +269,10 @@ def test_invalid_opposition_rescind_txns(app, subject, time_machine, wallet):
         when_dt += datetime.timedelta(minutes=1)
         time_machine.move_to(when_dt)
         with pytest.raises(InsufficientFundsError):
-            t2 = m.longest_chain.create_rescind(wallet, 2, subject)
-        t2 = m.longest_chain.create_rescind(wallet, 1, subject)
+            t2 = m.longest_chain.create_rescind(
+                wallet, 2, subject, 'opposition'
+            )
+        t2 = m.longest_chain.create_rescind(wallet, 1, subject, 'opposition')
         t2.sign()
         m.receive_transaction(t2.txid, t2.to_json())
         b3 = m.create_block()
@@ -272,7 +280,7 @@ def test_invalid_opposition_rescind_txns(app, subject, time_machine, wallet):
         when_dt += datetime.timedelta(minutes=1)
         time_machine.move_to(when_dt)
         with pytest.raises(InsufficientFundsError):
-            m.longest_chain.create_rescind(wallet, 1, subject)
+            m.longest_chain.create_rescind(wallet, 1, subject, 'opposition')
 
 
 def test_pending_chain_txns_boundary_alive(app, time_machine, wallet):
