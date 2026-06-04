@@ -56,6 +56,30 @@ MAX_FLOWS = 50
 ADDRESS_MISMATCH_MSG = 'Address/public key mismatch'
 
 
+@dataclass(frozen=True)
+class CoinbaseMetrics:
+    schadenfreude: int = 0
+    grace: int = 0
+    mudita: int = 0
+    regret: int = 0
+
+    def __add__(self, other: CoinbaseMetrics) -> CoinbaseMetrics:
+        return CoinbaseMetrics(
+            self.schadenfreude + other.schadenfreude,
+            self.grace + other.grace,
+            self.mudita + other.mudita,
+            self.regret + other.regret,
+        )
+
+    def nonzero_amounts(self) -> list[int]:
+        """Nonzero amounts in coinbase order (sf, grace, mudita, regret)."""
+        return [
+            v
+            for v in (self.schadenfreude, self.grace, self.mudita, self.regret)
+            if v
+        ]
+
+
 # ---------------------------------------------------------------------------
 # Pydantic v2 models — canonical validators for all callers.
 # ---------------------------------------------------------------------------
