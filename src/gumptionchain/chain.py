@@ -21,11 +21,13 @@ from gumptionchain.exceptions import (
     InvalidBlockError,
     InvalidBlockIndexError,
     InvalidChainError,
+    InvalidCoinbaseError,
     InvalidCoinbaseErrorRewardError,
     InvalidInflowOutflowError,
     InvalidPreviousHashError,
     InvalidTargetError,
     MismatchedCoinbaseError,
+    MissingCoinbaseError,
     MissingInflowOutflowError,
     MissingPreviousBlockError,
     OutOfOrderBlockError,
@@ -34,7 +36,7 @@ from gumptionchain.exceptions import (
 from gumptionchain.milling import mill_hash_str
 from gumptionchain.models import BlockDAO, ChainDAO
 from gumptionchain.payload import Inflow, Outflow, StakeKind
-from gumptionchain.transaction import Transaction
+from gumptionchain.transaction import CoinbaseMetrics, Transaction
 from gumptionchain.util import dt_2_iso, now
 from gumptionchain.wallet import Wallet
 
@@ -45,6 +47,22 @@ REWARD = 100 * GRAIN_PER_GRIT
 TARGET_GOAL_SECONDS = 600
 TARGET_INTERVAL = 2016
 TARGET_INTERVAL_SECONDS = TARGET_GOAL_SECONDS * TARGET_INTERVAL
+
+
+def _net_stake_mint(
+    out: dict[str, int],
+    consumed: dict[str, int],
+    rescind: dict[str, int],
+) -> int:
+    # Mint-side coinbase metric: half the NET new stake per subject.
+    # New stake = stake outflows minus recycled (consumed same-kind
+    # inflows that didn't go to a rescind), i.e. out - consumed +
+    # rescind, floored at 0. A restake or a partial-rescind change-back
+    # nets to 0 and mints nothing.
+    return sum(
+        max(0, out.get(s, 0) - consumed.get(s, 0) + rescind.get(s, 0)) // 2
+        for s in out.keys() | consumed.keys() | rescind.keys()
+    )
 
 
 def is_genesis_block(block: Block) -> bool:
@@ -149,8 +167,13 @@ class Chain:
         target = self.target or MAX_TARGET
         block.link(index, prev_hash or GENESIS_HASH, target)
 
-    def seal_block(self, block: Block, wallet: Wallet) -> None:
-        block.seal(wallet, self.block_reward(block))
+    def seal_block(
+        self,
+        block: Block,
+        wallet: Wallet,
+        metrics: CoinbaseMetrics,
+    ) -> None:
+        block.seal(wallet, self.block_reward(block), metrics)
 
     def add_block(self, block: Block, *, commit: bool = True) -> None:
         self.validate_block(block)
@@ -202,20 +225,39 @@ class Chain:
             raise InvalidBlockIndexError()
         if block.target != self.block_target(block=block):
             raise InvalidTargetError()
+        metrics = CoinbaseMetrics()
         for txn in block.regular_txns:
-            self.validate_block_txn(block, txn)
-        self.validate_block_coinbase(block)
+            metrics += self.validate_block_txn(block, txn)
+        try:
+            self.validate_block_coinbase(block, metrics)
+        except (
+            MismatchedCoinbaseError,
+            InvalidCoinbaseErrorRewardError,
+            InvalidBlockError,
+        ):
+            # MismatchedCoinbaseError and InvalidCoinbaseErrorRewardError are
+            # InvalidCoinbaseError subclasses that callers test for by type;
+            # re-raise them before the generic InvalidCoinbaseError wrap.
+            raise
+        except InvalidCoinbaseError as e:
+            raise InvalidBlockError(e.messages) from e
 
     def validate_block_txn(
         self,
         block: Block,
         txn: Transaction,
         txn_in_block: bool = True,  # noqa: FBT001
-    ) -> None:
+    ) -> CoinbaseMetrics:
         # add inflow amounts, routed by the kind of the consumed outflow
         opposition_amounts: dict[str, int] = {}
         support_amounts: dict[str, int] = {}
         other_amounts = 0
+        in_opp: dict[str, int] = {}
+        in_sup: dict[str, int] = {}
+        out_opp: dict[str, int] = {}
+        out_sup: dict[str, int] = {}
+        resc_opp: dict[str, int] = {}
+        resc_sup: dict[str, int] = {}
         for i in txn.inflows:
             amount, opposition, support = self.validate_txn_inflow(
                 block, txn, i, txn_in_block=txn_in_block
@@ -224,10 +266,12 @@ class Chain:
                 opposition_amounts[opposition] = (
                     opposition_amounts.get(opposition, 0) + amount
                 )
+                in_opp[opposition] = in_opp.get(opposition, 0) + amount
             elif support:
                 support_amounts[support] = (
                     support_amounts.get(support, 0) + amount
                 )
+                in_sup[support] = in_sup.get(support, 0) + amount
             else:
                 other_amounts += amount
         # subtract outflow amounts
@@ -239,13 +283,22 @@ class Chain:
                     support_amounts[o.rescind] = support_amounts.get(
                         o.rescind, 0
                     ) - (o.amount or 0)
+                    resc_sup[o.rescind] = resc_sup.get(o.rescind, 0) + (
+                        o.amount or 0
+                    )
                 elif o.rescind_kind == 'opposition':
                     opposition_amounts[o.rescind] = opposition_amounts.get(
                         o.rescind, 0
                     ) - (o.amount or 0)
+                    resc_opp[o.rescind] = resc_opp.get(o.rescind, 0) + (
+                        o.amount or 0
+                    )
                 else:
                     raise ImbalancedTransactionError()
             elif o.opposition:
+                out_opp[o.opposition] = out_opp.get(o.opposition, 0) + (
+                    o.amount or 0
+                )
                 opposition_amount = opposition_amounts.get(o.opposition)
                 if opposition_amount and opposition_amount > 0:
                     if (o.amount or 0) > opposition_amount:
@@ -258,6 +311,7 @@ class Chain:
                 else:
                     other_amounts -= o.amount or 0
             elif o.support:
+                out_sup[o.support] = out_sup.get(o.support, 0) + (o.amount or 0)
                 support_amount = support_amounts.get(o.support)
                 if support_amount and support_amount > 0:
                     if (o.amount or 0) > support_amount:
@@ -279,6 +333,16 @@ class Chain:
         for _, amount in support_amounts.items():
             if amount != 0:
                 raise ImbalancedTransactionError()
+        # out_opp/out_sup: o.opposition/o.support outflow branches only.
+        # resc_opp/resc_sup: o.rescind branches only.
+        # in_opp/in_sup: consumed inflows only.
+        # The mint-side (schadenfreude/mudita) and rescind-side
+        # (grace/regret) therefore draw on disjoint outflow pools.
+        schadenfreude = _net_stake_mint(out_opp, in_opp, resc_opp)
+        mudita = _net_stake_mint(out_sup, in_sup, resc_sup)
+        grace = sum(v // 2 for v in resc_opp.values())
+        regret = sum(v // 2 for v in resc_sup.values())
+        return CoinbaseMetrics(schadenfreude, grace, mudita, regret)
 
     def validate_txn_inflow(
         self,
@@ -315,22 +379,22 @@ class Chain:
             raise SpentTransactionError()
         return ioflow.amount or 0, ioflow.opposition, ioflow.support
 
-    def validate_block_coinbase(self, block: Block) -> None:
-        block.validate_coinbase()
-        reward = self.block_reward(block)
+    def validate_block_coinbase(
+        self, block: Block, metrics: CoinbaseMetrics
+    ) -> None:
         cb = block.coinbase
-        if cb is not None:
-            # A4.c v2: a coinbase is bound to the block it rewards via its
-            # prev_hash (which is part of the coinbase's hashed txid). A
-            # replay carries the wrong parent; reject on the mismatch. This
-            # is a purely local check — no lineage walk, no self.last_block
-            # dependence — so it is correct in both the add-block path and
-            # Chain.validate() full-chain revalidation.
-            if cb.prev_hash != block.prev_hash:
-                raise MismatchedCoinbaseError()
-            outflow = cb.get_outflow(0)
-            if outflow is not None and outflow.amount != reward:
-                raise InvalidCoinbaseErrorRewardError()
+        if cb is None:
+            raise MissingCoinbaseError()
+        cb.validate_coinbase()
+        if metrics.nonzero_amounts() != [o.amount for o in cb.outflows[1:]]:
+            raise InvalidCoinbaseError()
+        reward = self.block_reward(block)
+        # A4.c v2: coinbase is bound to the block it rewards via prev_hash.
+        if cb.prev_hash != block.prev_hash:
+            raise MismatchedCoinbaseError()
+        outflow = cb.get_outflow(0)
+        if outflow is not None and outflow.amount != reward:
+            raise InvalidCoinbaseErrorRewardError()
 
     def get_block(self, block_hash: str) -> Block | None:
         dao = self.to_dao()

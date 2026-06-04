@@ -10,6 +10,7 @@ from gumptionchain.chain import (
     GRAIN_PER_GRIT,
     REWARD,
     Chain,
+    _net_stake_mint,
 )
 from gumptionchain.database import db
 from gumptionchain.exceptions import (
@@ -28,7 +29,7 @@ from gumptionchain.exceptions import (
 )
 from gumptionchain.milling import mill_hash_str
 from gumptionchain.payload import Inflow, Outflow
-from gumptionchain.transaction import Transaction
+from gumptionchain.transaction import CoinbaseMetrics, Transaction
 from gumptionchain.util import now, now_iso
 from gumptionchain.wallet import Wallet
 
@@ -69,7 +70,7 @@ def test_invalid_prev_hash(app, wallet):
         # (CoinbaseTransactionModel) at seal() time, which is a different
         # check than the add_block prev_hash validation under test here.
         block.prev_hash = mill_hash_str('foo')
-        block.seal(wallet, chain.block_reward(block))
+        block.seal(wallet, chain.block_reward(block), CoinbaseMetrics())
         block.mill()
         with pytest.raises(InvalidBlockError):
             chain.add_block(block)
@@ -80,7 +81,7 @@ def test_invalid_txn_timestamp(app, time_machine, wallet):
         chain = Chain()
         block = Block()
         chain.link_block(block)
-        block.seal(wallet, chain.block_reward(block))
+        block.seal(wallet, chain.block_reward(block), CoinbaseMetrics())
         block.mill()
         chain.add_block(block)
         cb = block.coinbase
@@ -97,7 +98,7 @@ def test_invalid_txn_timestamp(app, time_machine, wallet):
         block = Block()
         block.add_txn(t)
         chain.link_block(block)
-        block.seal(wallet, chain.block_reward(block))
+        block.seal(wallet, chain.block_reward(block), CoinbaseMetrics())
         block.mill()
         with pytest.raises(InvalidBlockError, match='FutureTransactionError'):
             chain.add_block(block)
@@ -113,7 +114,7 @@ def test_invalid_txn_timestamp(app, time_machine, wallet):
         block = Block()
         block.add_txn(t)
         chain.link_block(block)
-        block.seal(wallet, chain.block_reward(block))
+        block.seal(wallet, chain.block_reward(block), CoinbaseMetrics())
         block.mill()
         with pytest.raises(InvalidBlockError, match='ExpiredTransactionError'):
             chain.add_block(block)
@@ -127,7 +128,7 @@ def test_decrease_target(app, wallet):
         for _i in range(0, 5):
             block = Block()
             chain.link_block(block)
-            block.seal(wallet, chain.block_reward(block))
+            block.seal(wallet, chain.block_reward(block), CoinbaseMetrics())
             assert block.target == TEST_TARGET
             assert block.target == chain.target
             block.mill()
@@ -136,7 +137,7 @@ def test_decrease_target(app, wallet):
         assert int(chain.target, 16) == new_target
         block = Block()
         chain.link_block(block)
-        block.seal(wallet, chain.block_reward(block))
+        block.seal(wallet, chain.block_reward(block), CoinbaseMetrics())
         assert block.target == chain.target
         block.mill()
         chain.add_block(block)
@@ -151,14 +152,14 @@ def test_increase_target(app, time_machine, wallet):
         chain = Chain()
         block = Block()
         chain.link_block(block)
-        block.seal(wallet, chain.block_reward(block))
+        block.seal(wallet, chain.block_reward(block), CoinbaseMetrics())
         block.mill()
         chain.add_block(block)
         time_machine.move_to(now_dt)
         for _i in range(0, 4):
             block = Block()
             chain.link_block(block)
-            block.seal(wallet, chain.block_reward(block))
+            block.seal(wallet, chain.block_reward(block), CoinbaseMetrics())
             assert block.target == chain.target == TEST_TARGET
             block.mill()
             chain.add_block(block)
@@ -177,7 +178,7 @@ def test_invalid_target(app, time_machine, time_stepper, wallet):
             _ = next(time_step)
             block = Block()
             chain.link_block(block)
-            block.seal(wallet, chain.block_reward(block))
+            block.seal(wallet, chain.block_reward(block), CoinbaseMetrics())
             assert block.target == chain.target == TEST_TARGET
             block.mill()
             chain.add_block(block)
@@ -187,7 +188,7 @@ def test_invalid_target(app, time_machine, time_stepper, wallet):
         block = Block()
         chain.link_block(block)
         block.target = TEST_TARGET
-        block.seal(wallet, chain.block_reward(block))
+        block.seal(wallet, chain.block_reward(block), CoinbaseMetrics())
         block.mill()
         with pytest.raises(InvalidTargetError):
             chain.add_block(block)
@@ -231,7 +232,7 @@ def test_mill(wallet):
     chain = Chain()
     block = Block()
     chain.link_block(block)
-    chain.seal_block(block, wallet)
+    chain.seal_block(block, wallet, CoinbaseMetrics())
     block.mill()
 
 
@@ -240,7 +241,7 @@ def test_mill_mp(wallet):
     chain = Chain()
     block = Block()
     chain.link_block(block)
-    chain.seal_block(block, wallet)
+    chain.seal_block(block, wallet, CoinbaseMetrics())
     block.mill(mp=True)
 
 
@@ -396,7 +397,7 @@ def test_validate_block(add_chain_block, app, time_machine, wallet):
         time_machine.move_to(then_dt)
         block2 = Block()
         chain.link_block(block2)
-        chain.seal_block(block2, wallet)
+        chain.seal_block(block2, wallet, CoinbaseMetrics())
         block2.mill()
         time_machine.move_to(now_dt)
         with pytest.raises(FutureBlockError):
@@ -406,7 +407,7 @@ def test_validate_block(add_chain_block, app, time_machine, wallet):
         time_machine.move_to(then_dt)
         block2 = Block()
         chain.link_block(block2)
-        chain.seal_block(block2, wallet)
+        chain.seal_block(block2, wallet, CoinbaseMetrics())
         block2.mill()
         time_machine.move_to(now_dt)
         with pytest.raises(OutOfOrderBlockError):
@@ -414,7 +415,7 @@ def test_validate_block(add_chain_block, app, time_machine, wallet):
 
         block2 = Block()
         chain.link_block(block2)
-        chain.seal_block(block2, wallet)
+        chain.seal_block(block2, wallet, CoinbaseMetrics())
         block2.idx += 1
         block2.mill()
         with pytest.raises(InvalidBlockIndexError):
@@ -443,7 +444,7 @@ def test_validate_block_txn(add_chain_block, app, time_machine, wallet):
         t.sign()
         time_machine.move_to(now_dt)
         block2.add_txn(t)
-        chain.seal_block(block2, wallet)
+        chain.seal_block(block2, wallet, CoinbaseMetrics())
         block2.mill()
         with pytest.raises(InvalidBlockError, match='FutureTransactionError'):
             chain.add_block(block2)
@@ -457,7 +458,7 @@ def test_validate_block_txn(add_chain_block, app, time_machine, wallet):
         t.seal()
         t.sign()
         block2.add_txn(t)
-        chain.seal_block(block2, wallet)
+        chain.seal_block(block2, wallet, CoinbaseMetrics())
         block2.mill()
         with pytest.raises(ImbalancedTransactionError):
             chain.add_block(block2)
@@ -476,7 +477,7 @@ def test_validate_txn_inflow(add_chain_block, app, time_machine, txid, wallet):
         t.sign()
         block.add_txn(t)
         chain.link_block(block)
-        chain.seal_block(block, wallet)
+        chain.seal_block(block, wallet, CoinbaseMetrics())
         block.mill()
         with pytest.raises(MissingInflowOutflowError):
             chain.add_block(block)
@@ -498,7 +499,7 @@ def test_validate_txn_inflow(add_chain_block, app, time_machine, txid, wallet):
         block2 = Block()
         block2.add_txn(t)
         chain.link_block(block2)
-        chain.seal_block(block2, wallet)
+        chain.seal_block(block2, wallet, CoinbaseMetrics())
         block2.mill()
         with pytest.raises(MissingInflowOutflowError):
             chain.add_block(block2)
@@ -522,7 +523,7 @@ def test_validate_txn_inflow(add_chain_block, app, time_machine, txid, wallet):
         block3 = Block()
         block3.add_txn(t)
         chain.link_block(block3)
-        chain.seal_block(block3, wallet)
+        chain.seal_block(block3, wallet, CoinbaseMetrics())
         block3.mill()
         with pytest.raises(SpentTransactionError):
             chain.add_block(block3)
@@ -549,7 +550,7 @@ def test_validate_block_coinbase(add_chain_block, app, subject, txid, wallet):
         block = Block()
         chain.link_block(block)
         block.link(0, GENESIS_HASH, TEST_TARGET)
-        block.seal(wallet, REWARD + 1)
+        block.seal(wallet, REWARD + 1, CoinbaseMetrics())
         block.mill()
         with pytest.raises(InvalidCoinbaseErrorRewardError):
             chain.add_block(block)
@@ -625,7 +626,7 @@ def test_validate_io_address_mismatch(app, wallet):
         chain = Chain()
         block = Block()
         chain.link_block(block)
-        chain.seal_block(block, wallet)
+        chain.seal_block(block, wallet, CoinbaseMetrics())
         block.mill()
         chain.add_block(block)
         cb = block.coinbase
@@ -640,7 +641,7 @@ def test_validate_io_address_mismatch(app, wallet):
         t2.seal()
         t2.sign()
         block2.add_txn(t2)
-        chain.seal_block(block2, wallet2)
+        chain.seal_block(block2, wallet2, CoinbaseMetrics())
         block2.mill()
         with pytest.raises(InflowOutflowAddressMismatchError):
             chain.add_block(block2)
@@ -651,7 +652,7 @@ def test_validate_opposition_ioflows(app, subject, wallet):
         chain = Chain()
         block = Block()
         chain.link_block(block)
-        chain.seal_block(block, wallet)
+        chain.seal_block(block, wallet, CoinbaseMetrics())
         block.mill()
         chain.add_block(block)
         cb = block.coinbase
@@ -666,7 +667,11 @@ def test_validate_opposition_ioflows(app, subject, wallet):
         t.seal()
         t.sign()
         block2.add_txn(t)
-        chain.seal_block(block2, wallet)
+        metrics2 = sum(
+            (chain.validate_block_txn(block2, txn) for txn in block2.txns),
+            CoinbaseMetrics(),
+        )
+        chain.seal_block(block2, wallet, metrics2)
         block2.mill()
         chain.add_block(block2)
 
@@ -683,7 +688,11 @@ def test_validate_opposition_ioflows(app, subject, wallet):
         t2.seal()
         t2.sign()
         block3.add_txn(t2)
-        chain.seal_block(block3, wallet)
+        metrics3 = sum(
+            (chain.validate_block_txn(block3, txn) for txn in block3.txns),
+            CoinbaseMetrics(),
+        )
+        chain.seal_block(block3, wallet, metrics3)
         block3.mill()
         chain.add_block(block3)
 
@@ -756,11 +765,10 @@ def test_support_rescind_mints_regret(
         _, milled_block = add_chain_block(chain=chain, block=block3)
 
         expected_regret = amt // 2
-        assert milled_block.regret == expected_regret
         coinbase_outflows = list(milled_block.coinbase.outflows)
-        # Only reward + regret should be present (schadenfreude/grace/mudita
-        # are 0 in this test), and exactly one outflow should carry the regret
-        # amount to the miner — not the reward outflow.
+        # This rescind block mints only reward + regret (no opposition/support
+        # stake or opposition rescind), so the coinbase has exactly two outflows
+        # and one carries the regret amount.
         assert len(coinbase_outflows) == 2
         assert (
             sum(
@@ -840,7 +848,7 @@ def test_rescind_kind_mismatch_rejected(
         block3 = Block()
         block3.add_txn(bad_rescind)
         chain.link_block(block3)
-        chain.seal_block(block3, wallet)
+        chain.seal_block(block3, wallet, CoinbaseMetrics())
         block3.mill()
         with pytest.raises(ImbalancedTransactionError):
             chain.add_block(block3)
@@ -881,7 +889,7 @@ def test_support_outflow_cannot_reach_address(
         block3 = Block()
         block3.add_txn(bad_txn)
         chain.link_block(block3)
-        chain.seal_block(block3, wallet)
+        chain.seal_block(block3, wallet, CoinbaseMetrics())
         block3.mill()
         with pytest.raises(ImbalancedTransactionError):
             chain.add_block(block3)
@@ -939,3 +947,564 @@ def test_to_dao_without_block_hash_returns_none():
     chain = Chain()
     assert chain.block_hash is None
     assert chain.to_dao() is None
+
+
+def test_net_stake_mint_new_stake():
+    assert _net_stake_mint({'A': 100}, {}, {}) == 50
+
+
+def test_net_stake_mint_restake_is_zero():
+    assert _net_stake_mint({'A': 100}, {'A': 100}, {}) == 0
+
+
+def test_net_stake_mint_partial_rescind_changeback_is_zero():
+    # out=change 60, consumed 100, rescind 40 -> new 0
+    assert _net_stake_mint({'A': 60}, {'A': 100}, {'A': 40}) == 0
+
+
+def test_net_stake_mint_odd_amount_floors():
+    assert _net_stake_mint({'A': 9}, {}, {}) == 4  # 9 // 2
+
+
+def test_net_stake_mint_sums_across_subjects():
+    assert _net_stake_mint({'A': 10, 'B': 20}, {}, {}) == 15  # 5 + 10
+
+
+def test_net_stake_mint_floors_each_subject_at_zero():
+    # A: consumed > emitted -> floored at 0 (not negative); B contributes
+    assert _net_stake_mint({'A': 10, 'B': 8}, {'A': 100}, {}) == 4  # 0 + 4
+
+
+def test_net_stake_mint_floor_is_per_subject_then_summed():
+    # A: max(0, 30-20+0)=10 -> 5 ; B: 8 -> 4 ; total 9
+    assert _net_stake_mint({'A': 30, 'B': 8}, {'A': 20}, {}) == 9
+
+
+# ---------------------------------------------------------------------------
+# CoinbaseMetrics / validate_block_txn net-stake tests
+# ---------------------------------------------------------------------------
+
+
+def test_validate_block_txn_returns_new_stake_metric(
+    add_chain_block, app, subject, time_stepper, wallet
+):
+    """New support stake → mudita == amt // 2; all other metrics zero."""
+    with app.app_context():
+        time_step = time_stepper(start=now() - datetime.timedelta(hours=1))
+        _ = next(time_step)
+        chain, block = add_chain_block()
+        cb = block.coinbase
+        amt = next(iter(cb.outflows)).amount
+
+        _ = next(time_step)
+        stake_txn = Transaction()
+        stake_txn.add_inflow(Inflow(outflow_txid=cb.txid, outflow_idx=0))
+        stake_txn.add_outflow(Outflow(amount=amt, support=subject))
+        stake_txn.set_wallet(wallet)
+        stake_txn.seal()
+        stake_txn.sign()
+
+        block2 = Block()
+        chain.link_block(block2)
+
+        m = chain.validate_block_txn(block2, stake_txn, txn_in_block=False)
+        assert isinstance(m, CoinbaseMetrics)
+        assert m.mudita == amt // 2
+        assert m.schadenfreude == 0
+        assert m.grace == 0
+        assert m.regret == 0
+
+
+def test_validate_block_txn_restake_mints_nothing(
+    add_chain_block, app, subject, time_stepper, wallet
+):
+    """Restake (consume+re-emit same support outflow) → mudita == 0."""
+    with app.app_context():
+        time_step = time_stepper(start=now() - datetime.timedelta(hours=1))
+        _ = next(time_step)
+        chain, block = add_chain_block()
+        cb = block.coinbase
+        amt = next(iter(cb.outflows)).amount
+
+        # stake support and mine it into the chain
+        _ = next(time_step)
+        t_support = Transaction()
+        t_support.add_inflow(Inflow(outflow_txid=cb.txid, outflow_idx=0))
+        t_support.add_outflow(Outflow(amount=amt, support=subject))
+        t_support.set_wallet(wallet)
+        t_support.seal()
+        t_support.sign()
+        block2 = Block()
+        block2.add_txn(t_support)
+        add_chain_block(chain=chain, block=block2)
+        chain.to_db()
+
+        # build a restake: consume the support outflow, emit a new one
+        _ = next(time_step)
+        restake_txn = Transaction()
+        restake_txn.add_inflow(
+            Inflow(outflow_txid=t_support.txid, outflow_idx=0)
+        )
+        restake_txn.add_outflow(Outflow(amount=amt, support=subject))
+        restake_txn.set_wallet(wallet)
+        restake_txn.seal()
+        restake_txn.sign()
+
+        block3 = Block()
+        chain.link_block(block3)
+
+        m = chain.validate_block_txn(block3, restake_txn, txn_in_block=False)
+        assert isinstance(m, CoinbaseMetrics)
+        assert m.mudita == 0
+        assert m.schadenfreude == 0
+        assert m.grace == 0
+        assert m.regret == 0
+
+
+def test_validate_block_txn_partial_rescind_metrics(
+    add_chain_block, app, subject, time_stepper, wallet
+):
+    """Partial support rescind → regret == rescind_amt // 2, mudita == 0."""
+    with app.app_context():
+        time_step = time_stepper(start=now() - datetime.timedelta(hours=1))
+        _ = next(time_step)
+        chain, block = add_chain_block()
+        cb = block.coinbase
+        amt = next(iter(cb.outflows)).amount
+        assert amt % 2 == 0, 'REWARD must be even for this test'
+
+        # stake support and mine it
+        _ = next(time_step)
+        t_support = Transaction()
+        t_support.add_inflow(Inflow(outflow_txid=cb.txid, outflow_idx=0))
+        t_support.add_outflow(Outflow(amount=amt, support=subject))
+        t_support.set_wallet(wallet)
+        t_support.seal()
+        t_support.sign()
+        block2 = Block()
+        block2.add_txn(t_support)
+        add_chain_block(chain=chain, block=block2)
+        chain.to_db()
+
+        # rescind half; create_rescind emits rescind + change-back
+        _ = next(time_step)
+        rescind_txn = chain.create_rescind(wallet, amt // 2, subject, 'support')
+        rescind_txn.sign()
+
+        block3 = Block()
+        chain.link_block(block3)
+
+        m = chain.validate_block_txn(block3, rescind_txn, txn_in_block=False)
+        assert isinstance(m, CoinbaseMetrics)
+        assert m.regret == (amt // 2) // 2
+        assert m.mudita == 0
+        assert m.schadenfreude == 0
+        assert m.grace == 0
+
+
+def test_validate_block_txn_returns_new_opposition_metric(
+    add_chain_block, app, subject, time_stepper, wallet
+):
+    """New opposition stake → schadenfreude == amt // 2; others zero."""
+    with app.app_context():
+        time_step = time_stepper(start=now() - datetime.timedelta(hours=1))
+        _ = next(time_step)
+        chain, block = add_chain_block()
+        cb = block.coinbase
+        amt = next(iter(cb.outflows)).amount
+
+        _ = next(time_step)
+        stake_txn = Transaction()
+        stake_txn.add_inflow(Inflow(outflow_txid=cb.txid, outflow_idx=0))
+        stake_txn.add_outflow(Outflow(amount=amt, opposition=subject))
+        stake_txn.set_wallet(wallet)
+        stake_txn.seal()
+        stake_txn.sign()
+
+        block2 = Block()
+        chain.link_block(block2)
+
+        m = chain.validate_block_txn(block2, stake_txn, txn_in_block=False)
+        assert isinstance(m, CoinbaseMetrics)
+        assert m.schadenfreude == amt // 2
+        assert m.mudita == 0
+        assert m.grace == 0
+        assert m.regret == 0
+
+
+def test_validate_block_txn_partial_rescind_opposition_metrics(
+    add_chain_block, app, subject, time_stepper, wallet
+):
+    """Partial opposition rescind → grace == rescind_amt // 2."""
+    with app.app_context():
+        time_step = time_stepper(start=now() - datetime.timedelta(hours=1))
+        _ = next(time_step)
+        chain, block = add_chain_block()
+        cb = block.coinbase
+        amt = next(iter(cb.outflows)).amount
+        assert amt % 2 == 0, 'REWARD must be even for this test'
+
+        # stake opposition and mine it
+        _ = next(time_step)
+        t_opp = Transaction()
+        t_opp.add_inflow(Inflow(outflow_txid=cb.txid, outflow_idx=0))
+        t_opp.add_outflow(Outflow(amount=amt, opposition=subject))
+        t_opp.set_wallet(wallet)
+        t_opp.seal()
+        t_opp.sign()
+        block2 = Block()
+        block2.add_txn(t_opp)
+        add_chain_block(chain=chain, block=block2)
+        chain.to_db()
+
+        # rescind half
+        _ = next(time_step)
+        rescind_txn = chain.create_rescind(
+            wallet, amt // 2, subject, 'opposition'
+        )
+        rescind_txn.sign()
+
+        block3 = Block()
+        chain.link_block(block3)
+
+        m = chain.validate_block_txn(block3, rescind_txn, txn_in_block=False)
+        assert isinstance(m, CoinbaseMetrics)
+        assert m.grace == (amt // 2) // 2
+        assert m.schadenfreude == 0
+        assert m.mudita == 0
+        assert m.regret == 0
+
+
+# ---------------------------------------------------------------------------
+# Net-stake coinbase end-to-end tests (Task 2)
+# ---------------------------------------------------------------------------
+
+
+def test_new_stake_still_mints_half(
+    add_chain_block, app, subject, time_stepper, wallet
+):
+    """A plain new support stake mints mudita == amt // 2 (regression)."""
+    with app.app_context():
+        time_step = time_stepper(start=now() - datetime.timedelta(hours=1))
+        _ = next(time_step)
+        chain, block = add_chain_block()
+        cb = block.coinbase
+        amt = next(iter(cb.outflows)).amount
+
+        _ = next(time_step)
+        stake_txn = Transaction()
+        stake_txn.add_inflow(Inflow(outflow_txid=cb.txid, outflow_idx=0))
+        stake_txn.add_outflow(Outflow(amount=amt, support=subject))
+        stake_txn.set_wallet(wallet)
+        stake_txn.seal()
+        stake_txn.sign()
+        block2 = Block()
+        block2.add_txn(stake_txn)
+        _, milled_block = add_chain_block(chain=chain, block=block2)
+
+        coinbase_outflows = list(milled_block.coinbase.outflows)
+        # reward + mudita
+        assert len(coinbase_outflows) == 2
+        mudita_amount = amt // 2
+        assert any(
+            o.amount == mudita_amount and o.address == wallet.address
+            for o in coinbase_outflows
+        )
+
+
+def test_restake_block_mints_no_mudita(
+    add_chain_block, app, subject, time_stepper, wallet
+):
+    """Restake block (consume + re-emit same support outflow) mints 0 mudita."""
+    with app.app_context():
+        time_step = time_stepper(start=now() - datetime.timedelta(hours=1))
+        _ = next(time_step)
+        chain, block = add_chain_block()
+        cb = block.coinbase
+        amt = next(iter(cb.outflows)).amount
+
+        # stake support and mine it
+        _ = next(time_step)
+        t_support = Transaction()
+        t_support.add_inflow(Inflow(outflow_txid=cb.txid, outflow_idx=0))
+        t_support.add_outflow(Outflow(amount=amt, support=subject))
+        t_support.set_wallet(wallet)
+        t_support.seal()
+        t_support.sign()
+        block2 = Block()
+        block2.add_txn(t_support)
+        add_chain_block(chain=chain, block=block2)
+        chain.to_db()
+
+        # restake: consume the support outflow, emit a new identical one
+        _ = next(time_step)
+        restake_txn = Transaction()
+        restake_txn.add_inflow(
+            Inflow(outflow_txid=t_support.txid, outflow_idx=0)
+        )
+        restake_txn.add_outflow(Outflow(amount=amt, support=subject))
+        restake_txn.set_wallet(wallet)
+        restake_txn.seal()
+        restake_txn.sign()
+        block3 = Block()
+        block3.add_txn(restake_txn)
+        _, milled_block = add_chain_block(chain=chain, block=block3)
+
+        coinbase_outflows = list(milled_block.coinbase.outflows)
+        # only reward, no metric outflows
+        assert len(coinbase_outflows) == 1
+
+
+def test_partial_rescind_block_conserves(
+    add_chain_block, app, subject, time_stepper, wallet
+):
+    """Partial rescind block mints regret == rescinded // 2, mudita == 0."""
+    with app.app_context():
+        time_step = time_stepper(start=now() - datetime.timedelta(hours=1))
+        _ = next(time_step)
+        chain, block = add_chain_block()
+        cb = block.coinbase
+        amt = next(iter(cb.outflows)).amount
+        assert amt % 2 == 0, 'REWARD must be even'
+
+        # stake support and mine it
+        _ = next(time_step)
+        t_support = Transaction()
+        t_support.add_inflow(Inflow(outflow_txid=cb.txid, outflow_idx=0))
+        t_support.add_outflow(Outflow(amount=amt, support=subject))
+        t_support.set_wallet(wallet)
+        t_support.seal()
+        t_support.sign()
+        block2 = Block()
+        block2.add_txn(t_support)
+        add_chain_block(chain=chain, block=block2)
+        chain.to_db()
+
+        # partial rescind: rescind half, change-back is a support outflow
+        _ = next(time_step)
+        rescind_txn = chain.create_rescind(wallet, amt // 2, subject, 'support')
+        rescind_txn.sign()
+        block3 = Block()
+        block3.add_txn(rescind_txn)
+        _, milled_block = add_chain_block(chain=chain, block=block3)
+
+        coinbase_outflows = list(milled_block.coinbase.outflows)
+        expected_regret = (amt // 2) // 2
+        # reward + regret only — change-back support outflow mints 0 mudita,
+        # so there are exactly 2 coinbase outflows.
+        assert len(coinbase_outflows) == 2
+        assert any(
+            o.amount == expected_regret and o.address == wallet.address
+            for o in coinbase_outflows
+        )
+
+
+def test_stake_lifecycle_mints_face_value(
+    add_chain_block, app, subject, time_stepper, wallet
+):
+    """Total minted across stake + full-rescind blocks == face value (amt)."""
+    with app.app_context():
+        time_step = time_stepper(start=now() - datetime.timedelta(hours=1))
+        _ = next(time_step)
+        chain, block = add_chain_block()
+        cb = block.coinbase
+        amt = next(iter(cb.outflows)).amount
+        assert amt % 2 == 0, 'REWARD must be even'
+
+        # stake
+        _ = next(time_step)
+        t_support = Transaction()
+        t_support.add_inflow(Inflow(outflow_txid=cb.txid, outflow_idx=0))
+        t_support.add_outflow(Outflow(amount=amt, support=subject))
+        t_support.set_wallet(wallet)
+        t_support.seal()
+        t_support.sign()
+        block2 = Block()
+        block2.add_txn(t_support)
+        _, milled_stake_block = add_chain_block(chain=chain, block=block2)
+        chain.to_db()
+
+        # full rescind
+        _ = next(time_step)
+        rescind_txn = chain.create_rescind(wallet, amt, subject, 'support')
+        rescind_txn.sign()
+        block3 = Block()
+        block3.add_txn(rescind_txn)
+        _, milled_rescind_block = add_chain_block(chain=chain, block=block3)
+
+        # stake block: mudita == amt // 2
+        stake_coinbase = milled_stake_block.coinbase.outflows
+        stake_minted = (
+            sum(o.amount for o in stake_coinbase if o.address == wallet.address)
+            - REWARD
+        )  # subtract reward to isolate metric mint
+
+        # rescind block: regret == amt // 2
+        rescind_coinbase = milled_rescind_block.coinbase.outflows
+        rescind_minted = (
+            sum(
+                o.amount
+                for o in rescind_coinbase
+                if o.address == wallet.address
+            )
+            - REWARD
+        )
+
+        total_minted = stake_minted + rescind_minted
+        assert total_minted == amt
+
+
+def test_forged_gross_coinbase_rejected(
+    add_chain_block, app, subject, time_stepper, wallet
+):
+    """Restake block whose coinbase is forged with gross mudita is rejected."""
+    with app.app_context():
+        time_step = time_stepper(start=now() - datetime.timedelta(hours=1))
+        _ = next(time_step)
+        chain, block = add_chain_block()
+        cb = block.coinbase
+        amt = next(iter(cb.outflows)).amount
+
+        # stake support and mine it
+        _ = next(time_step)
+        t_support = Transaction()
+        t_support.add_inflow(Inflow(outflow_txid=cb.txid, outflow_idx=0))
+        t_support.add_outflow(Outflow(amount=amt, support=subject))
+        t_support.set_wallet(wallet)
+        t_support.seal()
+        t_support.sign()
+        block2 = Block()
+        block2.add_txn(t_support)
+        add_chain_block(chain=chain, block=block2)
+        chain.to_db()
+
+        # build the restake txn
+        _ = next(time_step)
+        restake_txn = Transaction()
+        restake_txn.add_inflow(
+            Inflow(outflow_txid=t_support.txid, outflow_idx=0)
+        )
+        restake_txn.add_outflow(Outflow(amount=amt, support=subject))
+        restake_txn.set_wallet(wallet)
+        restake_txn.seal()
+        restake_txn.sign()
+
+        # build a block for the restake but DON'T seal normally;
+        # forge its coinbase to claim mudita = amt // 2 (gross, wrong)
+        block3 = Block()
+        block3.add_txn(restake_txn)
+        chain.link_block(block3)
+        reward = chain.block_reward(block3)
+        forged_cb = Transaction.coinbase(
+            wallet,
+            reward,
+            0,
+            0,
+            amt // 2,  # forged mudita (should be 0)
+            0,
+            prev_hash=block3.prev_hash,
+        )
+        block3.add_txn(forged_cb, is_coinbase=True)
+        block3.merkle_root = block3.get_merkle_root()
+        block3.timestamp = now_iso()
+        block3.mill()
+
+        with pytest.raises(InvalidBlockError):
+            chain.add_block(block3)
+
+
+def test_restake_opposition_block_mints_no_schadenfreude(
+    add_chain_block, app, subject, time_stepper, wallet
+):
+    """A restake opposition block mints 0 schadenfreude."""
+    with app.app_context():
+        time_step = time_stepper(start=now() - datetime.timedelta(hours=1))
+        _ = next(time_step)
+        chain, block = add_chain_block()
+        cb = block.coinbase
+        amt = next(iter(cb.outflows)).amount
+
+        # stake opposition and mine it
+        _ = next(time_step)
+        t_opp = Transaction()
+        t_opp.add_inflow(Inflow(outflow_txid=cb.txid, outflow_idx=0))
+        t_opp.add_outflow(Outflow(amount=amt, opposition=subject))
+        t_opp.set_wallet(wallet)
+        t_opp.seal()
+        t_opp.sign()
+        block2 = Block()
+        block2.add_txn(t_opp)
+        add_chain_block(chain=chain, block=block2)
+        chain.to_db()
+
+        # restake: consume the opposition outflow, emit a new identical one
+        _ = next(time_step)
+        restake_txn = Transaction()
+        restake_txn.add_inflow(Inflow(outflow_txid=t_opp.txid, outflow_idx=0))
+        restake_txn.add_outflow(Outflow(amount=amt, opposition=subject))
+        restake_txn.set_wallet(wallet)
+        restake_txn.seal()
+        restake_txn.sign()
+        block3 = Block()
+        block3.add_txn(restake_txn)
+        _, milled_block = add_chain_block(chain=chain, block=block3)
+
+        coinbase_outflows = list(milled_block.coinbase.outflows)
+        # only reward, no metric outflows
+        assert len(coinbase_outflows) == 1
+
+
+def test_forged_gross_coinbase_opposition_rejected(
+    add_chain_block, app, subject, time_stepper, wallet
+):
+    """Restake-opposition block with forged gross schadenfreude is rejected."""
+    with app.app_context():
+        time_step = time_stepper(start=now() - datetime.timedelta(hours=1))
+        _ = next(time_step)
+        chain, block = add_chain_block()
+        cb = block.coinbase
+        amt = next(iter(cb.outflows)).amount
+
+        # stake opposition and mine it
+        _ = next(time_step)
+        t_opp = Transaction()
+        t_opp.add_inflow(Inflow(outflow_txid=cb.txid, outflow_idx=0))
+        t_opp.add_outflow(Outflow(amount=amt, opposition=subject))
+        t_opp.set_wallet(wallet)
+        t_opp.seal()
+        t_opp.sign()
+        block2 = Block()
+        block2.add_txn(t_opp)
+        add_chain_block(chain=chain, block=block2)
+        chain.to_db()
+
+        # build the restake
+        _ = next(time_step)
+        restake_txn = Transaction()
+        restake_txn.add_inflow(Inflow(outflow_txid=t_opp.txid, outflow_idx=0))
+        restake_txn.add_outflow(Outflow(amount=amt, opposition=subject))
+        restake_txn.set_wallet(wallet)
+        restake_txn.seal()
+        restake_txn.sign()
+
+        # forge: claim gross schadenfreude instead of 0
+        block3 = Block()
+        block3.add_txn(restake_txn)
+        chain.link_block(block3)
+        reward = chain.block_reward(block3)
+        forged_cb = Transaction.coinbase(
+            wallet,
+            reward,
+            amt // 2,  # forged schadenfreude (should be 0)
+            0,
+            0,
+            0,
+            prev_hash=block3.prev_hash,
+        )
+        block3.add_txn(forged_cb, is_coinbase=True)
+        block3.merkle_root = block3.get_merkle_root()
+        block3.timestamp = now_iso()
+        block3.mill()
+
+        with pytest.raises(InvalidBlockError):
+            chain.add_block(block3)
