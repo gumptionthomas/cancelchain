@@ -494,7 +494,7 @@ class SubjectTxnView(MethodView):
             if lc is None:
                 raise EmptyChainError()
             return make_json_response(
-                lc.create_subject(wallet, amount, subject).to_json()
+                lc.create_opposition(wallet, amount, subject).to_json()
             )
         except GCError as err:
             return make_error_response(err)
@@ -529,7 +529,7 @@ class ForgiveTxnView(MethodView):
             if lc is None:
                 raise EmptyChainError()
             return make_json_response(
-                lc.create_forgive(wallet, amount, subject).to_json()
+                lc.create_rescind(wallet, amount, subject).to_json()
             )
         except GCError as err:
             return make_error_response(err)

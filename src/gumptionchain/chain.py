@@ -446,7 +446,7 @@ class Chain:
         t.seal()
         return t
 
-    def create_subject(
+    def create_opposition(
         self,
         wallet: Wallet,
         amount: int,
@@ -484,7 +484,7 @@ class Chain:
         t.seal()
         return t
 
-    def create_forgive(
+    def create_rescind(
         self, wallet: Wallet, amount: int, subject: str
     ) -> Transaction:
         address = wallet.address

@@ -26,7 +26,7 @@ def test_no_role(app, host, mill_block, requests_proxy, subject, wallet):
         w = Wallet()
         m, _b = mill_block(w)
         lc = m.longest_chain
-        txn = lc.create_subject(w, lc.balance(w.address), subject)
+        txn = lc.create_opposition(w, lc.balance(w.address), subject)
         txn.sign()
         response = ApiClient(host, wallet).post_transaction(txn)
         assert response.status_code == httpx.codes.CREATED
@@ -147,7 +147,7 @@ def test_post_invalid_block(app, host, requests_proxy, wallet):
 def test_post_txn(app, host, mill_block, requests_proxy, subject, wallet):
     with app.app_context():
         m, _b = mill_block(wallet)
-        txn = m.longest_chain.create_subject(wallet, 1, subject)
+        txn = m.longest_chain.create_opposition(wallet, 1, subject)
         txn.sign()
         response = ApiClient(host, wallet).post_transaction(txn)
         assert response.status_code == httpx.codes.CREATED
@@ -159,7 +159,7 @@ def test_post_invalid_txn(
 ):
     with app.app_context():
         m, _b = mill_block(wallet)
-        txn = m.longest_chain.create_subject(wallet, 1, subject)
+        txn = m.longest_chain.create_opposition(wallet, 1, subject)
         with pytest.raises(httpx.HTTPStatusError, match='400'):
             ApiClient(host, wallet).post_transaction(txn)
         assert len(m.pending_txns) == 0
@@ -178,7 +178,7 @@ def test_pending_transactions(
         assert response.status_code == httpx.codes.OK
         assert response.json() == []
         _ = next(time_step)
-        txn = m.longest_chain.create_subject(wallet, 1, subject)
+        txn = m.longest_chain.create_opposition(wallet, 1, subject)
         txn.sign()
         response = ApiClient(host, wallet).post_transaction(txn)
         response = ApiClient(host, wallet).get_pending_transactions()
@@ -186,7 +186,7 @@ def test_pending_transactions(
         txns = [Transaction.from_dict(t) for t in response.json()]
         assert txns == [txn]
         _ = next(time_step)
-        txn2 = m.longest_chain.create_subject(wallet, 2, subject)
+        txn2 = m.longest_chain.create_opposition(wallet, 2, subject)
         txn2.sign()
         response = ApiClient(host, wallet).post_transaction(txn2)
         response = ApiClient(host, wallet).get_pending_transactions()
@@ -216,7 +216,7 @@ def test_pending_transactions_earliest_returns_recent_txns(
         m, _b = mill_block(wallet)
         _ = next(time_step)
         past = now() - timedelta(hours=1)
-        txn = m.longest_chain.create_subject(wallet, 1, subject)
+        txn = m.longest_chain.create_opposition(wallet, 1, subject)
         txn.sign()
         ApiClient(host, wallet).post_transaction(txn)
         response = ApiClient(host, wallet).get_pending_transactions(
