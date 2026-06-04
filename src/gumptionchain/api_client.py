@@ -183,6 +183,7 @@ class ApiClient:
         public_key: str,
         amount: int,
         subject: str,
+        kind: str,
         timeout: int | float | None = None,
         raise_for_status: bool = True,  # noqa: FBT001
     ) -> httpx.Response:
@@ -192,6 +193,7 @@ class ApiClient:
                 'public_key': public_key,
                 'amount': str(amount),
                 'subject': subject,
+                'kind': kind,
             },
             timeout=timeout,
             raise_for_status=raise_for_status,

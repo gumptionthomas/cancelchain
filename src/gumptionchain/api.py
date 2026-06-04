@@ -5,7 +5,7 @@ from collections.abc import Callable, Mapping
 from datetime import datetime
 from enum import Enum
 from functools import wraps
-from typing import Annotated, Any, NoReturn, cast
+from typing import Annotated, Any, Literal, NoReturn, cast
 
 from flask import (
     Blueprint,
@@ -476,6 +476,10 @@ class SubjectTxnQueryModel(BaseModel):
     subject: _RawSubjectField
 
 
+class RescindTxnQueryModel(SubjectTxnQueryModel):
+    kind: Literal['opposition', 'support']
+
+
 class OppositionTxnView(MethodView):
     def get(self, **kwargs: Any) -> Response:
         try:
@@ -514,7 +518,7 @@ blueprint.add_url_rule(
 class RescindTxnView(MethodView):
     def get(self, **kwargs: Any) -> Response:
         try:
-            model = SubjectTxnQueryModel.model_validate(
+            model = RescindTxnQueryModel.model_validate(
                 request.args.to_dict(flat=True)
             )
         except ValidationError as e:
@@ -524,12 +528,13 @@ class RescindTxnView(MethodView):
             public_key_b64 = args['public_key']
             amount = args['amount']
             subject = encode_subject(args['subject'])
+            kind = args['kind']
             wallet = Wallet(b64ks=public_key_b64)
             _, lc, _ = node_lc_dao()
             if lc is None:
                 raise EmptyChainError()
             return make_json_response(
-                lc.create_rescind(wallet, amount, subject).to_json()
+                lc.create_rescind(wallet, amount, subject, kind).to_json()
             )
         except GCError as err:
             return make_error_response(err)

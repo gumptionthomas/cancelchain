@@ -572,11 +572,15 @@ class ChainDAO(Base):
     def unrescinded_outflows(
         self,
         subject: str,
+        kind: str,
         address: str | None = None,
         filter_pending: bool = False,  # noqa: FBT001
     ) -> Select[tuple[OutflowDAO]]:
+        column = (
+            OutflowDAO.support if kind == 'support' else OutflowDAO.opposition
+        )
         inflows_alias = db.aliased(InflowDAO, self.inflows.subquery())
-        stmt = self.outflows.where(OutflowDAO.opposition == subject)
+        stmt = self.outflows.where(column == subject)
         stmt = stmt.join(inflows_alias, OutflowDAO.inflows, isouter=True)
         stmt = stmt.where(inflows_alias.id.is_(None))
         if address is not None:
@@ -599,7 +603,10 @@ class ChainDAO(Base):
         return db.session.scalar(sum_stmt) or 0
 
     def support_balance(self, subject: str) -> int:
+        inflows_alias = db.aliased(InflowDAO, self.inflows.subquery())
         stmt = self.outflows.where(OutflowDAO.support == subject)
+        stmt = stmt.join(inflows_alias, OutflowDAO.inflows, isouter=True)
+        stmt = stmt.where(inflows_alias.id.is_(None))
         outflows_alias = db.aliased(OutflowDAO, stmt.subquery())
         sum_stmt = db.select(db.func.sum(OutflowDAO.amount)).join(
             outflows_alias, OutflowDAO.id == outflows_alias.id

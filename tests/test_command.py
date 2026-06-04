@@ -162,7 +162,14 @@ def test_empty_chain(app, runner, requests_proxy, subject_raw, wallet):
         assert 'Opposition failed: EmptyChainError' in result.output
 
 
-def run_txn_rescind(runner, subject, txn_wallet, txn_wallet_file, confirm=True):
+def run_txn_rescind(
+    runner,
+    subject,
+    txn_wallet,
+    txn_wallet_file,
+    confirm=True,
+    kind='opposition',
+):
     return runner.invoke(
         args=[
             'txn',
@@ -170,6 +177,8 @@ def run_txn_rescind(runner, subject, txn_wallet, txn_wallet_file, confirm=True):
             txn_wallet.address,
             str(SUBJECT_GRIT),
             subject,
+            '--kind',
+            kind,
             '--txn-wallet',
             txn_wallet_file,
         ],
