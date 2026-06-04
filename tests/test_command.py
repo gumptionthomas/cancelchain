@@ -108,11 +108,13 @@ def test_invalid_transfer(app, mill_block, runner, requests_proxy, wallet):
         assert len(m.pending_txns) == 0
 
 
-def run_txn_subject(runner, subject, txn_wallet, txn_wallet_file, confirm=True):
+def run_txn_opposition(
+    runner, subject, txn_wallet, txn_wallet_file, confirm=True
+):
     return runner.invoke(
         args=[
             'txn',
-            'subject',
+            'opposition',
             txn_wallet.address,
             str(SUBJECT_GRIT),
             subject,
@@ -123,30 +125,32 @@ def run_txn_subject(runner, subject, txn_wallet, txn_wallet_file, confirm=True):
     )
 
 
-def test_subject(app, mill_block, runner, requests_proxy, subject_raw, wallet):
+def test_opposition(
+    app, mill_block, runner, requests_proxy, subject_raw, wallet
+):
     with app.app_context():
         txn_wallet = Wallet()
         txnwf = txn_wallet.to_file(walletdir=app.config.get('WALLET_DIR'))
         m, _ = mill_block(txn_wallet)
-        result = run_txn_subject(
+        result = run_txn_opposition(
             runner, subject_raw, txn_wallet, txnwf, confirm=False
         )
-        assert 'Subject aborted' in result.output
+        assert 'Opposition aborted' in result.output
         assert len(m.pending_txns) == 0
-        result = run_txn_subject(runner, subject_raw, txn_wallet, txnwf)
-        assert 'Subject created' in result.output
+        result = run_txn_opposition(runner, subject_raw, txn_wallet, txnwf)
+        assert 'Opposition created' in result.output
         assert len(m.pending_txns) == 1
 
 
-def test_invalid_subject(
+def test_invalid_opposition(
     app, mill_block, runner, requests_proxy, subject_raw, wallet
 ):
     with app.app_context():
         txn_wallet = Wallet()
         txnwf = txn_wallet.to_file(walletdir=app.config.get('WALLET_DIR'))
         m, _ = mill_block(wallet)
-        result = run_txn_subject(runner, subject_raw, txn_wallet, txnwf)
-        assert 'Subject failed: InsufficientFundsError' in result.output
+        result = run_txn_opposition(runner, subject_raw, txn_wallet, txnwf)
+        assert 'Opposition failed: InsufficientFundsError' in result.output
         assert len(m.pending_txns) == 0
 
 
@@ -154,15 +158,15 @@ def test_empty_chain(app, runner, requests_proxy, subject_raw, wallet):
     with app.app_context():
         txn_wallet = Wallet()
         txnwf = txn_wallet.to_file(walletdir=app.config.get('WALLET_DIR'))
-        result = run_txn_subject(runner, subject_raw, txn_wallet, txnwf)
-        assert 'Subject failed: EmptyChainError' in result.output
+        result = run_txn_opposition(runner, subject_raw, txn_wallet, txnwf)
+        assert 'Opposition failed: EmptyChainError' in result.output
 
 
-def run_txn_forgive(runner, subject, txn_wallet, txn_wallet_file, confirm=True):
+def run_txn_rescind(runner, subject, txn_wallet, txn_wallet_file, confirm=True):
     return runner.invoke(
         args=[
             'txn',
-            'forgive',
+            'rescind',
             txn_wallet.address,
             str(SUBJECT_GRIT),
             subject,
@@ -173,7 +177,7 @@ def run_txn_forgive(runner, subject, txn_wallet, txn_wallet_file, confirm=True):
     )
 
 
-def test_forgive(
+def test_rescind(
     app, mill_block, runner, requests_proxy, subject_raw, time_stepper, wallet
 ):
     with app.app_context():
@@ -182,28 +186,28 @@ def test_forgive(
         txnwf = txn_wallet.to_file(walletdir=app.config.get('WALLET_DIR'))
         m, _ = mill_block(txn_wallet)
         _ = next(time_step)
-        result = run_txn_subject(runner, subject_raw, txn_wallet, txnwf)
+        result = run_txn_opposition(runner, subject_raw, txn_wallet, txnwf)
         assert len(m.pending_txns) == 1
         m, _ = mill_block(txn_wallet)
-        result = run_txn_forgive(
+        result = run_txn_rescind(
             runner, subject_raw, txn_wallet, txnwf, confirm=False
         )
-        assert 'Forgive aborted' in result.output
+        assert 'Rescind aborted' in result.output
         assert len(m.pending_txns) == 1
-        result = run_txn_forgive(runner, subject_raw, txn_wallet, txnwf)
-        assert 'Forgive created' in result.output
+        result = run_txn_rescind(runner, subject_raw, txn_wallet, txnwf)
+        assert 'Rescind created' in result.output
         assert len(m.pending_txns) == 2
 
 
-def test_invalid_forgive(
+def test_invalid_rescind(
     app, mill_block, runner, requests_proxy, subject_raw, wallet
 ):
     with app.app_context():
         txn_wallet = Wallet()
         txnwf = txn_wallet.to_file(walletdir=app.config.get('WALLET_DIR'))
         m, _ = mill_block(txn_wallet)
-        result = run_txn_forgive(runner, subject_raw, txn_wallet, txnwf)
-        assert 'Forgive failed: InsufficientFundsError' in result.output
+        result = run_txn_rescind(runner, subject_raw, txn_wallet, txnwf)
+        assert 'Rescind failed: InsufficientFundsError' in result.output
         assert len(m.pending_txns) == 0
 
 
@@ -269,7 +273,7 @@ def test_wallet_balance(
         result = runner.invoke(args=['wallet', 'balance', wallet.address])
         assert f'{REWARD_GRIT} GRIT' in result.output
         wf = get_wallet_file(wallet.address, app=app)
-        run_txn_subject(runner, subject_raw, wallet, wf)
+        run_txn_opposition(runner, subject_raw, wallet, wf)
         w = Wallet()
         mill_block(w)
         result = runner.invoke(args=['wallet', 'balance', wallet.address])
@@ -288,21 +292,21 @@ def test_wallet_balance(
         assert 'Not Found' in result.output
 
 
-def test_subject_balance(
+def test_subject_opposition(
     app, mill_block, runner, requests_proxy, subject_raw, wallet
 ):
     with app.app_context():
         mill_block(wallet)
-        result = runner.invoke(args=['subject', 'balance', subject_raw])
+        result = runner.invoke(args=['subject', 'opposition', subject_raw])
         assert '0 GRIT' in result.output
         wf = get_wallet_file(wallet.address, app=app)
-        run_txn_subject(runner, subject_raw, wallet, wf)
+        run_txn_opposition(runner, subject_raw, wallet, wf)
         mill_block(wallet)
-        result = runner.invoke(args=['subject', 'balance', subject_raw])
+        result = runner.invoke(args=['subject', 'opposition', subject_raw])
         assert f'{SUBJECT_GRIT} GRIT' in result.output
-        run_txn_subject(runner, subject_raw, wallet, wf)
+        run_txn_opposition(runner, subject_raw, wallet, wf)
         mill_block(wallet)
-        result = runner.invoke(args=['subject', 'balance', subject_raw])
+        result = runner.invoke(args=['subject', 'opposition', subject_raw])
         assert f'{2 * SUBJECT_GRIT} GRIT' in result.output
 
 

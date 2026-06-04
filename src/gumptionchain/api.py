@@ -476,7 +476,7 @@ class SubjectTxnQueryModel(BaseModel):
     subject: _RawSubjectField
 
 
-class SubjectTxnView(MethodView):
+class OppositionTxnView(MethodView):
     def get(self, **kwargs: Any) -> Response:
         try:
             model = SubjectTxnQueryModel.model_validate(
@@ -494,7 +494,7 @@ class SubjectTxnView(MethodView):
             if lc is None:
                 raise EmptyChainError()
             return make_json_response(
-                lc.create_subject(wallet, amount, subject).to_json()
+                lc.create_opposition(wallet, amount, subject).to_json()
             )
         except GCError as err:
             return make_error_response(err)
@@ -503,15 +503,15 @@ class SubjectTxnView(MethodView):
 
 
 blueprint.add_url_rule(
-    '/transaction/subject',
+    '/transaction/opposition',
     view_func=authorize_transactor(
-        SubjectTxnView.as_view('txn_subject_transactor')
+        OppositionTxnView.as_view('txn_opposition_transactor')
     ),
     methods=['GET'],
 )
 
 
-class ForgiveTxnView(MethodView):
+class RescindTxnView(MethodView):
     def get(self, **kwargs: Any) -> Response:
         try:
             model = SubjectTxnQueryModel.model_validate(
@@ -529,7 +529,7 @@ class ForgiveTxnView(MethodView):
             if lc is None:
                 raise EmptyChainError()
             return make_json_response(
-                lc.create_forgive(wallet, amount, subject).to_json()
+                lc.create_rescind(wallet, amount, subject).to_json()
             )
         except GCError as err:
             return make_error_response(err)
@@ -538,9 +538,9 @@ class ForgiveTxnView(MethodView):
 
 
 blueprint.add_url_rule(
-    '/transaction/forgive',
+    '/transaction/rescind',
     view_func=authorize_transactor(
-        ForgiveTxnView.as_view('txn_forgive_transactor')
+        RescindTxnView.as_view('txn_rescind_transactor')
     ),
     methods=['GET'],
 )
@@ -653,16 +653,16 @@ blueprint.add_url_rule(
 )
 
 
-class SubjectBalanceView(MethodView):
+class OppositionBalanceView(MethodView):
     def get(self, subject: str, **kwargs: Any) -> Response:
         try:
             _, lc, _ = node_lc_dao()
             if lc is None:
                 raise EmptyChainError()
             block_hash = lc.block_hash
-            key = f'{block_hash}.{subject}.balance'
+            key = f'{block_hash}.{subject}.opposition'
             if (balance := cache.get(key)) is None:
-                balance = lc.subject_balance(subject)
+                balance = lc.opposition_balance(subject)
                 cache.set(key, balance)
             return make_json_response(
                 {'balance': balance, 'as_of_block': block_hash}
@@ -674,9 +674,9 @@ class SubjectBalanceView(MethodView):
 
 
 blueprint.add_url_rule(
-    '/subject/<subject:subject>/balance',
+    '/subject/<subject:subject>/opposition',
     view_func=authorize_reader(
-        SubjectBalanceView.as_view('subject_balance_transactor')
+        OppositionBalanceView.as_view('opposition_balance_transactor')
     ),
     methods=['GET'],
 )
@@ -691,7 +691,7 @@ class SubjectSupportView(MethodView):
             block_hash = lc.block_hash
             key = f'{block_hash}.{subject}.support'
             if (support := cache.get(key)) is None:
-                support = lc.subject_support(subject)
+                support = lc.support_balance(subject)
                 cache.set(key, support)
             return make_json_response(
                 {'support': support, 'as_of_block': block_hash}

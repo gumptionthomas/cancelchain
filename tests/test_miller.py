@@ -202,7 +202,7 @@ def test_max_txns(app, time_machine, wallet):
         assert len(b1.txns) == max_txns
 
 
-def test_subject_forgive_txns(app, subject, time_machine, wallet):
+def test_opposition_rescind_txns(app, subject, time_machine, wallet):
     with app.app_context():
         now_dt = now()
         when_dt = now_dt - datetime.timedelta(hours=1)
@@ -213,23 +213,23 @@ def test_subject_forgive_txns(app, subject, time_machine, wallet):
         when_dt += datetime.timedelta(minutes=1)
         time_machine.move_to(when_dt)
         amount = m.longest_chain.balance(wallet.address)
-        t0 = m.longest_chain.create_subject(wallet, amount, subject)
+        t0 = m.longest_chain.create_opposition(wallet, amount, subject)
         t0.sign()
         m.receive_transaction(t0.txid, t0.to_json())
         b1 = m.create_block()
         m.mill_block(b1)
-        assert m.longest_chain.subject_balance(subject) == amount
+        assert m.longest_chain.opposition_balance(subject) == amount
         when_dt += datetime.timedelta(minutes=1)
         time_machine.move_to(when_dt)
-        t1 = m.longest_chain.create_forgive(wallet, amount, subject)
+        t1 = m.longest_chain.create_rescind(wallet, amount, subject)
         t1.sign()
         m.receive_transaction(t1.txid, t1.to_json())
         b2 = m.create_block()
         m.mill_block(b2)
-        assert m.longest_chain.subject_balance(subject) == 0
+        assert m.longest_chain.opposition_balance(subject) == 0
 
 
-def test_invalid_subject_forgive_txns(app, subject, time_machine, wallet):
+def test_invalid_opposition_rescind_txns(app, subject, time_machine, wallet):
     with app.app_context():
         now_dt = now()
         when_dt = now_dt - datetime.timedelta(hours=1)
@@ -241,9 +241,9 @@ def test_invalid_subject_forgive_txns(app, subject, time_machine, wallet):
         time_machine.move_to(when_dt)
         amount = m.longest_chain.balance(wallet.address) + 1
         with pytest.raises(InsufficientFundsError):
-            t0 = m.longest_chain.create_subject(wallet, amount, subject)
+            t0 = m.longest_chain.create_opposition(wallet, amount, subject)
         amount = m.longest_chain.balance(wallet.address) - 2
-        t0 = m.longest_chain.create_subject(wallet, amount, subject)
+        t0 = m.longest_chain.create_opposition(wallet, amount, subject)
         assert len(t0.outflows) == 2
         t0.sign()
         m.receive_transaction(t0.txid, t0.to_json())
@@ -253,8 +253,8 @@ def test_invalid_subject_forgive_txns(app, subject, time_machine, wallet):
         when_dt += datetime.timedelta(minutes=1)
         time_machine.move_to(when_dt)
         with pytest.raises(InsufficientFundsError):
-            t1 = m.longest_chain.create_forgive(wallet, amount + 1, subject)
-        t1 = m.longest_chain.create_forgive(wallet, amount - 1, subject)
+            t1 = m.longest_chain.create_rescind(wallet, amount + 1, subject)
+        t1 = m.longest_chain.create_rescind(wallet, amount - 1, subject)
         t1.sign()
         m.receive_transaction(t1.txid, t1.to_json())
         b2 = m.create_block()
@@ -263,8 +263,8 @@ def test_invalid_subject_forgive_txns(app, subject, time_machine, wallet):
         when_dt += datetime.timedelta(minutes=1)
         time_machine.move_to(when_dt)
         with pytest.raises(InsufficientFundsError):
-            t2 = m.longest_chain.create_forgive(wallet, 2, subject)
-        t2 = m.longest_chain.create_forgive(wallet, 1, subject)
+            t2 = m.longest_chain.create_rescind(wallet, 2, subject)
+        t2 = m.longest_chain.create_rescind(wallet, 1, subject)
         t2.sign()
         m.receive_transaction(t2.txid, t2.to_json())
         b3 = m.create_block()
@@ -272,7 +272,7 @@ def test_invalid_subject_forgive_txns(app, subject, time_machine, wallet):
         when_dt += datetime.timedelta(minutes=1)
         time_machine.move_to(when_dt)
         with pytest.raises(InsufficientFundsError):
-            m.longest_chain.create_forgive(wallet, 1, subject)
+            m.longest_chain.create_rescind(wallet, 1, subject)
 
 
 def test_pending_chain_txns_boundary_alive(app, time_machine, wallet):

@@ -534,7 +534,7 @@ def test_validate_block_coinbase(add_chain_block, app, subject, txid, wallet):
         chain.link_block(block)
         t = Transaction()
         t.add_inflow(Inflow(outflow_txid=txid, outflow_idx=0))
-        t.add_outflow(Outflow(amount=1, subject=subject))
+        t.add_outflow(Outflow(amount=1, opposition=subject))
         t.set_wallet(wallet)
         t.seal()
         t.sign()
@@ -559,7 +559,7 @@ def test_validate_block_coinbase(add_chain_block, app, subject, txid, wallet):
 
         t = Transaction()
         t.add_inflow(Inflow(outflow_txid=cb.txid, outflow_idx=0))
-        t.add_outflow(Outflow(amount=cb_amount, subject=subject))
+        t.add_outflow(Outflow(amount=cb_amount, opposition=subject))
         t.set_wallet(wallet)
         t.seal()
         t.sign()
@@ -582,7 +582,7 @@ def test_validate_block_coinbase(add_chain_block, app, subject, txid, wallet):
 
         t = Transaction()
         t.add_inflow(Inflow(outflow_txid=cb.txid, outflow_idx=0))
-        t.add_outflow(Outflow(amount=cb_amount, subject=subject))
+        t.add_outflow(Outflow(amount=cb_amount, opposition=subject))
         t.set_wallet(wallet)
         t.seal()
         t.sign()
@@ -592,7 +592,7 @@ def test_validate_block_coinbase(add_chain_block, app, subject, txid, wallet):
 
         t2 = Transaction()
         t2.add_inflow(Inflow(outflow_txid=t.txid, outflow_idx=0))
-        t2.add_outflow(Outflow(amount=cb_amount, forgive=subject))
+        t2.add_outflow(Outflow(amount=cb_amount, rescind=subject))
         t2.set_wallet(wallet)
         t2.seal()
         t2.sign()
@@ -641,7 +641,7 @@ def test_validate_io_address_mismatch(app, wallet):
             chain.add_block(block2)
 
 
-def test_validate_subject_ioflows(app, subject, wallet):
+def test_validate_opposition_ioflows(app, subject, wallet):
     with app.app_context():
         chain = Chain()
         block = Block()
@@ -656,7 +656,7 @@ def test_validate_subject_ioflows(app, subject, wallet):
         chain.link_block(block2)
         t = Transaction()
         t.add_inflow(Inflow(outflow_txid=cb.txid, outflow_idx=0))
-        t.add_outflow(Outflow(amount=cb_amount, subject=subject))
+        t.add_outflow(Outflow(amount=cb_amount, opposition=subject))
         t.set_wallet(wallet)
         t.seal()
         t.sign()
@@ -669,7 +669,7 @@ def test_validate_subject_ioflows(app, subject, wallet):
         chain.link_block(block3)
         t2 = Transaction()
         t2.add_inflow(Inflow(outflow_txid=t.txid, outflow_idx=0))
-        t2.add_outflow(Outflow(amount=cb_amount, forgive=subject))
+        t2.add_outflow(Outflow(amount=cb_amount, rescind=subject))
         t2.set_wallet(wallet)
         t2.seal()
         t2.sign()

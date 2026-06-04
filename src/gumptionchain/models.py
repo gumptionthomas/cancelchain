@@ -123,8 +123,8 @@ class OutflowDAO(Base):
     idx: Mapped[int] = mapped_column(Integer)
     amount: Mapped[int] = mapped_column(BigInteger)
     address: Mapped[str | None] = mapped_column(String(100))
-    subject: Mapped[str | None] = mapped_column(String(500))
-    forgive: Mapped[str | None] = mapped_column(String(500))
+    opposition: Mapped[str | None] = mapped_column(String(500))
+    rescind: Mapped[str | None] = mapped_column(String(500))
     support: Mapped[str | None] = mapped_column(String(500))
     transaction_id: Mapped[int] = mapped_column(
         Integer, ForeignKey('transaction.id')
@@ -147,8 +147,8 @@ class OutflowDAO(Base):
         idx: int,
         amount: int,
         address: str | None = None,
-        subject: str | None = None,
-        forgive: str | None = None,
+        opposition: str | None = None,
+        rescind: str | None = None,
         support: str | None = None,
         transaction_dao: TransactionDAO | None = None,
     ) -> None:
@@ -157,8 +157,8 @@ class OutflowDAO(Base):
             self.idx = idx
             self.amount = amount
             self.address = address
-            self.subject = subject
-            self.forgive = forgive
+            self.opposition = opposition
+            self.rescind = rescind
             self.support = support
             self.transaction = transaction_dao or None  # type: ignore[assignment]
 
@@ -566,14 +566,14 @@ class ChainDAO(Base):
         )
         return db.session.scalar(sum_stmt) or 0
 
-    def unforgiven_outflows(
+    def unrescinded_outflows(
         self,
         subject: str,
         address: str | None = None,
         filter_pending: bool = False,  # noqa: FBT001
     ) -> Select[tuple[OutflowDAO]]:
         inflows_alias = db.aliased(InflowDAO, self.inflows.subquery())
-        stmt = self.outflows.where(OutflowDAO.subject == subject)
+        stmt = self.outflows.where(OutflowDAO.opposition == subject)
         stmt = stmt.join(inflows_alias, OutflowDAO.inflows, isouter=True)
         stmt = stmt.where(inflows_alias.id.is_(None))
         if address is not None:
@@ -584,9 +584,9 @@ class ChainDAO(Base):
             stmt = stmt.where(~OutflowDAO.pending.any())
         return stmt
 
-    def subject_balance(self, subject: str) -> int:
+    def opposition_balance(self, subject: str) -> int:
         inflows_alias = db.aliased(InflowDAO, self.inflows.subquery())
-        stmt = self.outflows.where(OutflowDAO.subject == subject)
+        stmt = self.outflows.where(OutflowDAO.opposition == subject)
         stmt = stmt.join(inflows_alias, OutflowDAO.inflows, isouter=True)
         stmt = stmt.where(inflows_alias.id.is_(None))
         outflows_alias = db.aliased(OutflowDAO, stmt.subquery())
@@ -595,7 +595,7 @@ class ChainDAO(Base):
         )
         return db.session.scalar(sum_stmt) or 0
 
-    def subject_support(self, subject: str) -> int:
+    def support_balance(self, subject: str) -> int:
         stmt = self.outflows.where(OutflowDAO.support == subject)
         outflows_alias = db.aliased(OutflowDAO, stmt.subquery())
         sum_stmt = db.select(db.func.sum(OutflowDAO.amount)).join(

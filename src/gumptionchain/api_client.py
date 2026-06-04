@@ -159,7 +159,7 @@ class ApiClient:
             raise_for_status=raise_for_status,
         )
 
-    def get_subject_transaction(
+    def get_opposition_transaction(
         self,
         public_key: str,
         amount: int,
@@ -168,7 +168,7 @@ class ApiClient:
         raise_for_status: bool = True,  # noqa: FBT001
     ) -> httpx.Response:
         return self.get(
-            '/api/transaction/subject',
+            '/api/transaction/opposition',
             params={
                 'public_key': public_key,
                 'amount': str(amount),
@@ -178,7 +178,7 @@ class ApiClient:
             raise_for_status=raise_for_status,
         )
 
-    def get_forgive_transaction(
+    def get_rescind_transaction(
         self,
         public_key: str,
         amount: int,
@@ -187,7 +187,7 @@ class ApiClient:
         raise_for_status: bool = True,  # noqa: FBT001
     ) -> httpx.Response:
         return self.get(
-            '/api/transaction/forgive',
+            '/api/transaction/rescind',
             params={
                 'public_key': public_key,
                 'amount': str(amount),
@@ -288,19 +288,19 @@ class ApiClient:
             raise_for_status=raise_for_status,
         )
 
-    def get_subject_balance(
+    def get_opposition_balance(
         self,
         subject: str,
         timeout: int | float | None = None,
         raise_for_status: bool = True,  # noqa: FBT001
     ) -> httpx.Response:
         return self.get(
-            f'/api/subject/{subject}/balance',
+            f'/api/subject/{subject}/opposition',
             timeout=timeout,
             raise_for_status=raise_for_status,
         )
 
-    def get_subject_support(
+    def get_support_balance(
         self,
         subject: str,
         timeout: int | float | None = None,
