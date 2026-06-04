@@ -750,7 +750,7 @@ def create_opposition(
     wallet: str | None,
     yes: bool,  # noqa: FBT001
 ) -> None:
-    """Create a subject ("cancel") transaction.
+    """Create an opposition transaction.
 
     \b
     ADDRESS is the transaction source address.
@@ -767,7 +767,7 @@ def create_opposition(
         )
         txn = Transaction.from_json(r.text)
         if not (confirm := yes):
-            console.print(f'Subject transaction created: {txn.txid}')
+            console.print(f'Opposition transaction created: {txn.txid}')
             confirm = Confirm.ask(
                 'Do you want to sign and post the transaction?'
             )
@@ -775,13 +775,15 @@ def create_opposition(
             txn.set_wallet(txn_wallet_obj)
             txn.sign()
             client.post_transaction(txn)
-            console.print(f'Subject created: {txn.txid}', style='success')
+            console.print(f'Opposition created: {txn.txid}', style='success')
         else:
-            console.print('Subject aborted.', style='error')
+            console.print('Opposition aborted.', style='error')
     except httpx.HTTPStatusError as e:
-        console.print(f'Subject failed: {http_error_message(e)}', style='error')
+        console.print(
+            f'Opposition failed: {http_error_message(e)}', style='error'
+        )
     except Exception as e:
-        console.print(f'Subject failed: {e}', style='error')
+        console.print(f'Opposition failed: {e}', style='error')
 
 
 @txn_cli.command('rescind')
@@ -825,7 +827,7 @@ def create_rescind(
     wallet: str | None,
     yes: bool,  # noqa: FBT001
 ) -> None:
-    """Create a forgive transaction.
+    """Create a rescind transaction.
 
     \b
     ADDRESS is the transaction source address.
@@ -842,7 +844,7 @@ def create_rescind(
         )
         txn = Transaction.from_json(r.text)
         if not (confirm := yes):
-            console.print(f'Subject transaction created: {txn.txid}')
+            console.print(f'Rescind transaction created: {txn.txid}')
             confirm = Confirm.ask(
                 'Do you want to sign and post the transaction?'
             )
@@ -850,13 +852,13 @@ def create_rescind(
             txn.set_wallet(txn_wallet_obj)
             txn.sign()
             client.post_transaction(txn)
-            console.print(f'Forgive created: {txn.txid}', style='success')
+            console.print(f'Rescind created: {txn.txid}', style='success')
         else:
-            console.print('Forgive aborted.', style='error')
+            console.print('Rescind aborted.', style='error')
     except httpx.HTTPStatusError as e:
-        console.print(f'Forgive failed: {http_error_message(e)}', style='error')
+        console.print(f'Rescind failed: {http_error_message(e)}', style='error')
     except Exception as e:
-        console.print(f'Forgive failed: {e} ', style='error')
+        console.print(f'Rescind failed: {e} ', style='error')
 
 
 @txn_cli.command('support')
@@ -1009,7 +1011,7 @@ subject_cli = AppGroup('subject', help='Command group to work with subjects.')
 def opposition_balance(
     subject: str, host: str | None, wallet: str | None
 ) -> None:
-    """Get the balance (i.e. subject transactions minus forgiveness
+    """Get the balance (i.e. opposition transactions minus rescissions
        transactions) in GRIT for a subject.
 
     \b
@@ -1022,10 +1024,11 @@ def opposition_balance(
         console.print(f'{human_grains(balance)} GRIT', style='success')
     except httpx.HTTPStatusError as e:
         console.print(
-            f'Subject balance failed: {http_error_message(e)}', style='error'
+            f'Opposition balance failed: {http_error_message(e)}',
+            style='error',
         )
     except Exception as e:
-        console.print(f'Subject balance failed: {e}', style='error')
+        console.print(f'Opposition balance failed: {e}', style='error')
 
 
 @subject_cli.command('support')
