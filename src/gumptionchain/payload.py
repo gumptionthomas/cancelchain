@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from base64 import urlsafe_b64decode, urlsafe_b64encode
 from dataclasses import dataclass
-from typing import Annotated, Self
+from typing import Annotated, Literal, Self
 
 from pydantic import (
     AfterValidator,
@@ -21,6 +21,9 @@ from gumptionchain.schema import (
 MIN_SUBJECT_LENGTH = 1
 MAX_SUBJECT_LENGTH = 79
 INVALID_DESTINATION_MSG = 'Invalid destinations'
+INVALID_RESCIND_KIND_MSG = (
+    'rescind_kind must be set if and only if rescind is set'
+)
 INVALID_PADDING_MSG = 'Invalid padding'
 
 
@@ -80,6 +83,7 @@ class OutflowModel(BaseModel):
     opposition: Subject | None = None
     rescind: Subject | None = None
     support: Subject | None = None
+    rescind_kind: Literal['opposition', 'support'] | None = None
 
     @model_validator(mode='after')
     def validate_destinations(self) -> Self:
@@ -93,6 +97,8 @@ class OutflowModel(BaseModel):
             or (options and len(options) == 1 and not self.address)
         ):
             raise ValueError(INVALID_DESTINATION_MSG)
+        if (self.rescind is not None) != (self.rescind_kind is not None):
+            raise ValueError(INVALID_RESCIND_KIND_MSG)
         return self
 
 
@@ -110,6 +116,7 @@ class Outflow:
     opposition: str | None = None
     rescind: str | None = None
     support: str | None = None
+    rescind_kind: str | None = None
 
     @property
     def data_csv(self) -> str:
@@ -120,6 +127,7 @@ class Outflow:
                 self.opposition if self.opposition is not None else '',
                 self.rescind if self.rescind is not None else '',
                 self.support if self.support is not None else '',
+                self.rescind_kind if self.rescind_kind is not None else '',
             ]
         )
 

@@ -216,11 +216,11 @@ def reward():
 
 @pytest.fixture(
     params=[
-        (2, True, None, None, None),
-        (2, True, None, None, None),
-        (2, False, SUBJECT_1, None, None),
-        (2, False, None, SUBJECT_1, None),
-        (2, False, None, None, SUBJECT_1),
+        (2, True, None, None, None, None),
+        (2, True, None, None, None, None),
+        (2, False, SUBJECT_1, None, None, None),
+        (2, False, None, SUBJECT_1, None, 'opposition'),
+        (2, False, None, None, SUBJECT_1, None),
     ]
 )
 def valid_outflow(request, wallet):
@@ -231,6 +231,7 @@ def valid_outflow(request, wallet):
         opposition=request.param[2],
         rescind=request.param[3],
         support=request.param[4],
+        rescind_kind=request.param[5],
     )
 
 

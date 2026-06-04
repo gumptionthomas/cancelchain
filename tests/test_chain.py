@@ -592,7 +592,11 @@ def test_validate_block_coinbase(add_chain_block, app, subject, txid, wallet):
 
         t2 = Transaction()
         t2.add_inflow(Inflow(outflow_txid=t.txid, outflow_idx=0))
-        t2.add_outflow(Outflow(amount=cb_amount, rescind=subject))
+        t2.add_outflow(
+            Outflow(
+                amount=cb_amount, rescind=subject, rescind_kind='opposition'
+            )
+        )
         t2.set_wallet(wallet)
         t2.seal()
         t2.sign()
@@ -669,7 +673,11 @@ def test_validate_opposition_ioflows(app, subject, wallet):
         chain.link_block(block3)
         t2 = Transaction()
         t2.add_inflow(Inflow(outflow_txid=t.txid, outflow_idx=0))
-        t2.add_outflow(Outflow(amount=cb_amount, rescind=subject))
+        t2.add_outflow(
+            Outflow(
+                amount=cb_amount, rescind=subject, rescind_kind='opposition'
+            )
+        )
         t2.set_wallet(wallet)
         t2.seal()
         t2.sign()

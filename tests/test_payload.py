@@ -18,13 +18,13 @@ from gumptionchain.payload import (
 
 def test_outflow_data_csv(subject, wallet):
     outflow = Outflow(amount=9, address=wallet.address)
-    assert outflow.data_csv == f'9,{wallet.address},,,'
+    assert outflow.data_csv == f'9,{wallet.address},,,,'
     outflow = Outflow(amount=9, opposition=subject)
-    assert outflow.data_csv == f'9,,{subject},,'
-    outflow = Outflow(amount=9, rescind=subject)
-    assert outflow.data_csv == f'9,,,{subject},'
+    assert outflow.data_csv == f'9,,{subject},,,'
+    outflow = Outflow(amount=9, rescind=subject, rescind_kind='opposition')
+    assert outflow.data_csv == f'9,,,{subject},,opposition'
     outflow = Outflow(amount=9, support=subject)
-    assert outflow.data_csv == f'9,,,,{subject}'
+    assert outflow.data_csv == f'9,,,,{subject},'
 
 
 def test_outflow_schadenfreude(subject):
@@ -79,7 +79,7 @@ def test_outflow_model_accepts_opposition_only():
 
 def test_outflow_model_accepts_rescind_only():
     subject = encode_subject('forgiven one')
-    m = OutflowModel(amount=3, rescind=subject)
+    m = OutflowModel(amount=3, rescind=subject, rescind_kind='opposition')
     assert m.rescind == subject
     assert m.address is None
 
@@ -174,3 +174,25 @@ def test_valid_raw_subject_helper():
     assert _valid_raw_subject('\x1b') is False  # control char
     assert _valid_raw_subject('') is False  # below min length
     assert _valid_raw_subject('x' * 80) is False  # above max length
+
+
+def test_outflow_rescind_carries_kind():
+    o = Outflow(amount=10, rescind='Zm9v', rescind_kind='opposition')
+    assert o.rescind == 'Zm9v'
+    assert o.rescind_kind == 'opposition'
+
+
+def test_outflow_model_rescind_requires_kind():
+    with pytest.raises(PydanticValidationError):
+        OutflowModel(amount=10, rescind='Zm9v')  # missing rescind_kind
+
+
+def test_outflow_model_rescind_kind_requires_rescind():
+    subject = encode_subject('cancel me')
+    with pytest.raises(PydanticValidationError):
+        OutflowModel(amount=10, opposition=subject, rescind_kind='opposition')
+
+
+def test_outflow_model_accepts_rescind_with_kind():
+    m = OutflowModel(amount=10, rescind='Zm9v', rescind_kind='support')
+    assert m.rescind_kind == 'support'

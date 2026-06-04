@@ -285,6 +285,7 @@ class Transaction:
                     opposition=outflow.opposition,
                     rescind=outflow.rescind,
                     support=outflow.support,
+                    rescind_kind=outflow.rescind_kind,
                 )
                 for idx, outflow in enumerate(self.outflows)
             ],
@@ -337,6 +338,7 @@ class Transaction:
                     opposition=outflow_dao.opposition,
                     rescind=outflow_dao.rescind,
                     support=outflow_dao.support,
+                    rescind_kind=outflow_dao.rescind_kind,
                 )
                 for outflow_dao in dao.outflows
             ],

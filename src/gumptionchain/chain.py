@@ -498,7 +498,9 @@ class Chain:
             t.add_inflow(Inflow(outflow_txid=txid, outflow_idx=index))
         if balance < amount:
             raise InsufficientFundsError()
-        t.add_outflow(Outflow(amount=amount, rescind=subject))
+        t.add_outflow(
+            Outflow(amount=amount, rescind=subject, rescind_kind='opposition')
+        )
         if balance - amount:
             t.add_outflow(Outflow(amount=balance - amount, opposition=subject))
         t.set_wallet(wallet)

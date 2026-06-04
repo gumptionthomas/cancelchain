@@ -126,6 +126,7 @@ class OutflowDAO(Base):
     opposition: Mapped[str | None] = mapped_column(String(500))
     rescind: Mapped[str | None] = mapped_column(String(500))
     support: Mapped[str | None] = mapped_column(String(500))
+    rescind_kind: Mapped[str | None] = mapped_column(String(16))
     transaction_id: Mapped[int] = mapped_column(
         Integer, ForeignKey('transaction.id')
     )
@@ -150,6 +151,7 @@ class OutflowDAO(Base):
         opposition: str | None = None,
         rescind: str | None = None,
         support: str | None = None,
+        rescind_kind: str | None = None,
         transaction_dao: TransactionDAO | None = None,
     ) -> None:
         with db.session.no_autoflush:
@@ -160,6 +162,7 @@ class OutflowDAO(Base):
             self.opposition = opposition
             self.rescind = rescind
             self.support = support
+            self.rescind_kind = rescind_kind
             self.transaction = transaction_dao or None  # type: ignore[assignment]
 
     @classmethod
