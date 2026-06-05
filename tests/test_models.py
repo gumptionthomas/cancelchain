@@ -1144,7 +1144,10 @@ def test_ancestry_read_paths_match_oracle_canonical(
                 tip.address_transactions(wallet.address)
             ).scalars()
         )
+        assert addr_txns
         assert all(t.address == wallet.address for t in addr_txns)
+        for t in addr_txns:
+            assert {b.id for b in t.blocks} & set(oracle_ids)
 
 
 def test_ancestry_read_paths_match_oracle_fork(
@@ -1174,6 +1177,7 @@ def test_ancestry_read_paths_match_oracle_fork(
                 chain_dao.unspent_outflows(wallet.address)
             ).scalars()
         )
+        assert unspent
         for o in unspent:
             assert {b.id for b in o.transaction.blocks} & set(oracle_ids)
 
