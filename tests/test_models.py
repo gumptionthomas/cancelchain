@@ -1,5 +1,5 @@
 import datetime
-from unittest.mock import patch
+from unittest.mock import PropertyMock, patch
 
 from _sa_helpers import _count, _count_select
 
@@ -753,3 +753,70 @@ def test_smart_reorg_deep_reorg_with_no_common_ancestor_falls_back(
         assert all(r.block_id not in fork_block_ids for r in rows)
         # Positions 0, 1, 2 (genesis-first).
         assert [r.position for r in rows] == [0, 1, 2]
+
+
+def _build_canonical_chain_with_spend(add_chain_block, time_stepper, wallet):
+    """Build a 2-block canonical chain where block 2 contains a txn that
+    spends block 1's coinbase. Returns (chain, block1, block2, spend_txid)."""
+    time_step = time_stepper(
+        start=datetime.datetime.now(datetime.UTC) - datetime.timedelta(hours=1)
+    )
+    _ = next(time_step)
+    chain, block1 = add_chain_block(milling_wallet=wallet)
+    cb = block1.coinbase
+    cb_amount = next(iter(cb.outflows)).amount
+    _ = next(time_step)
+    t = Transaction()
+    t.add_inflow(Inflow(outflow_txid=cb.txid, outflow_idx=0))
+    t.add_outflow(Outflow(amount=cb_amount, address=wallet.address))
+    t.set_wallet(wallet)
+    t.seal()
+    t.sign()
+    t.to_db()
+    _ = next(time_step)
+    block2 = Block()
+    block2.add_txn(t)
+    _, block2 = add_chain_block(
+        chain=chain, block=block2, milling_wallet=wallet
+    )
+    chain.to_db()
+    return chain, block1, block2, t.txid
+
+
+def test_hot_path_methods_never_touch_recursive_cte(
+    app, add_chain_block, time_stepper, wallet
+):
+    """get_transaction_in_chain / inflows_in_chain_count / get_block_in_chain
+    must not access the recursive _block_chain CTE on canonical OR fork
+    anchors. Booby-trap _block_chain to raise; the three methods must still
+    return correct results.
+    """
+    with app.app_context():
+        _chain, block1, block2, spend_txid = _build_canonical_chain_with_spend(
+            add_chain_block, time_stepper, wallet
+        )
+        cb1_txid = block1.coinbase.txid
+        tip_dao = BlockDAO.get(block2.block_hash)
+        genesis_dao = BlockDAO.get(block1.block_hash)
+        assert tip_dao is not None
+        assert genesis_dao is not None
+
+        with patch.object(
+            BlockDAO, '_block_chain', new_callable=PropertyMock
+        ) as cte_mock:
+            cte_mock.side_effect = AssertionError(
+                'hot-path method accessed the recursive CTE'
+            )
+            # canonical anchor (the tip)
+            assert tip_dao.get_transaction_in_chain(spend_txid) is not None
+            assert tip_dao.get_transaction_in_chain('does-not-exist') is None
+            # the spend consumed block1's coinbase outflow → counted once
+            assert tip_dao.inflows_in_chain_count(cb1_txid, 0) == 1
+            assert tip_dao.inflows_in_chain_count('nope', 0) == 0
+            assert (
+                tip_dao.get_block_in_chain(block_hash=block1.block_hash)
+                is not None
+            )
+            assert tip_dao.get_block_in_chain(idx=0) is not None
+            # an ancestor anchor still resolves its own ancestry
+            assert genesis_dao.get_transaction_in_chain(cb1_txid) is not None
