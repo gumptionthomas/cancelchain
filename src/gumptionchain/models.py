@@ -5,7 +5,6 @@ from collections.abc import Generator
 from typing import Any, ClassVar
 
 from sqlalchemy import (
-    CTE,
     BigInteger,
     DateTime,
     ForeignKey,
@@ -104,17 +103,6 @@ class TransactionDAO(Base):
             db.select(cls).filter_by(txid=txid)
         ).scalar_one_or_none()
 
-    @classmethod
-    def transactions_chain(
-        cls, block_chain: Select[tuple[BlockDAO]]
-    ) -> Select[tuple[TransactionDAO]]:
-        block_alias = db.aliased(BlockDAO, block_chain.subquery())
-        return (  # type: ignore[no-any-return]
-            db.select(TransactionDAO)
-            .join(block_alias, TransactionDAO.blocks)
-            .order_by(TransactionDAO.timestamp.desc(), TransactionDAO.id)
-        )
-
 
 class OutflowDAO(Base):
     __tablename__ = 'outflow'
@@ -174,21 +162,6 @@ class OutflowDAO(Base):
             db.select(cls).filter_by(txid=outflow_txid, idx=outflow_idx)
         ).scalar_one_or_none()
 
-    @classmethod
-    def outflows_chain(
-        cls, transactions_chain: Select[tuple[TransactionDAO]]
-    ) -> Select[tuple[OutflowDAO]]:
-        txn_alias = db.aliased(TransactionDAO, transactions_chain.subquery())
-        return (  # type: ignore[no-any-return]
-            db.select(OutflowDAO)
-            .join(txn_alias, OutflowDAO.transaction)
-            .order_by(
-                txn_alias.timestamp.desc(),
-                txn_alias.txid,
-                OutflowDAO.idx,
-            )
-        )
-
 
 class InflowDAO(Base):
     __tablename__ = 'inflow'
@@ -234,21 +207,6 @@ class InflowDAO(Base):
                 ).scalar_one_or_none()
             self.outflow = outflow_dao  # type: ignore[assignment]
             self.transaction = transaction_dao  # type: ignore[assignment]
-
-    @classmethod
-    def inflows_chain(
-        cls, transactions_chain: Select[tuple[TransactionDAO]]
-    ) -> Select[tuple[InflowDAO]]:
-        txn_alias = db.aliased(TransactionDAO, transactions_chain.subquery())
-        return (  # type: ignore[no-any-return]
-            db.select(InflowDAO)
-            .join(txn_alias, InflowDAO.transaction)
-            .order_by(
-                txn_alias.timestamp.desc(),
-                txn_alias.txid,
-                InflowDAO.idx,
-            )
-        )
 
 
 class BlockDAO(Base):
@@ -306,34 +264,6 @@ class BlockDAO(Base):
         self.prev = prev_dao or BlockDAO.get(prev_hash)
         for transaction_dao in transaction_daos or []:
             self.transactions.append(transaction_dao)
-
-    @property
-    def _block_chain(self) -> CTE:
-        base = (
-            db.select(BlockDAO)
-            .where(BlockDAO.id == self.id)
-            .cte(recursive=True)
-        )
-        return base.union_all(  # type: ignore[no-any-return]
-            db.select(BlockDAO).where(BlockDAO.id == base.c.prev_id)
-        )
-
-    @property
-    def block_chain(self) -> Select[tuple[BlockDAO]]:
-        block_alias = db.aliased(BlockDAO, self._block_chain)
-        return db.select(block_alias)  # type: ignore[no-any-return]
-
-    @property
-    def transactions_chain(self) -> Select[tuple[TransactionDAO]]:
-        return TransactionDAO.transactions_chain(self.block_chain)
-
-    @property
-    def outflows_chain(self) -> Select[tuple[OutflowDAO]]:
-        return OutflowDAO.outflows_chain(self.transactions_chain)
-
-    @property
-    def inflows_chain(self) -> Select[tuple[InflowDAO]]:
-        return InflowDAO.inflows_chain(self.transactions_chain)
 
     def commit(self, *, commit: bool = True) -> None:
         db.session.add(self)
@@ -592,8 +522,8 @@ class BlockDAO(Base):
     def longest_chain_transactions_q(cls) -> Select[tuple[TransactionDAO]]:
         """Transactions in the longest chain, ordered tip→genesis.
 
-        Matches TransactionDAO.transactions_chain's ordering
-        (timestamp.desc, id) within the longest chain's block set.
+        Ordered by (timestamp.desc, id) within the longest chain's
+        block set.
         """
         blocks_subq = cls.longest_chain_blocks_q().subquery()
         block_alias = db.aliased(BlockDAO, blocks_subq)
@@ -606,8 +536,7 @@ class BlockDAO(Base):
     @classmethod
     def longest_chain_outflows_q(cls) -> Select[tuple[OutflowDAO]]:
         """Outflows in the longest chain, ordered by their parent txn's
-        timestamp desc, then txid, then outflow idx — matching
-        OutflowDAO.outflows_chain's ordering.
+        timestamp desc, then txid, then outflow idx.
         """
         txn_subq = cls.longest_chain_transactions_q().subquery()
         txn_alias = db.aliased(TransactionDAO, txn_subq)
@@ -623,8 +552,8 @@ class BlockDAO(Base):
 
     @classmethod
     def longest_chain_inflows_q(cls) -> Select[tuple[InflowDAO]]:
-        """Inflows in the longest chain, ordered analogously to
-        InflowDAO.inflows_chain (timestamp desc, txid, inflow idx).
+        """Inflows in the longest chain, ordered by their parent txn's
+        timestamp desc, then txid, then inflow idx.
         """
         txn_subq = cls.longest_chain_transactions_q().subquery()
         txn_alias = db.aliased(TransactionDAO, txn_subq)
@@ -646,7 +575,8 @@ class LongestChainBlockDAO(Base):
     with `position` 0 at genesis and increasing toward the tip. Maintained
     by ChainDAO.sync_longest_chain_blocks() — never written from anywhere
     else. Phase 6 (2026-05-27) introduced this table to eliminate the
-    recursive `BlockDAO._block_chain` CTE from hot-path reads.
+    recursive block-ancestry CTE (since deleted in #158) from hot-path
+    reads.
     """
 
     __tablename__ = 'longest_chain_block'

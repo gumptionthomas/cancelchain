@@ -1,5 +1,5 @@
 import datetime
-from unittest.mock import PropertyMock, patch
+from unittest.mock import patch
 
 from _sa_helpers import _count, _count_select
 
@@ -11,6 +11,7 @@ from gumptionchain.models import (
     ChainDAO,
     InflowDAO,
     LongestChainBlockDAO,
+    OutflowDAO,
     TransactionDAO,
 )
 from gumptionchain.payload import Inflow, Outflow
@@ -259,20 +260,19 @@ def test_longest_chain_block_non_longest_extend_noop(app, time_stepper, wallet):
         ]
 
 
-def test_longest_chain_block_property_matches_cte(app, mill_block, wallet):
+def test_longest_chain_block_property_matches_prev_walk(
+    app, mill_block, wallet
+):
     """After any chain build, the materialization table contents
-    (ordered position DESC, i.e. tip→genesis) must match the recursive
-    CTE walk. Uses block_chain (the CTE) as ground truth.
+    (ordered position DESC, i.e. tip→genesis) must match the pure-Python
+    prev-walk. Uses the prev-walk oracle as ground truth.
     """
     with app.app_context():
         for _ in range(5):
             mill_block(wallet)
         longest = ChainDAO.longest()
         assert longest is not None
-        cte_ids = [
-            b.id
-            for b in db.session.execute(longest.block.block_chain).scalars()
-        ]
+        oracle_ids = _pythonic_ancestry_ids(longest.block)
         mat_ids = [
             r.block_id
             for r in db.session.execute(
@@ -283,7 +283,7 @@ def test_longest_chain_block_property_matches_cte(app, mill_block, wallet):
             .scalars()
             .all()
         ]
-        assert cte_ids == mat_ids
+        assert oracle_ids == mat_ids
 
 
 def test_longest_chain_blocks_q_fast_path_skips_cte(app, mill_block, wallet):
@@ -371,7 +371,7 @@ def test_non_longest_chain_blocks_is_cte_free(app, time_stepper, wallet):
 
 def test_longest_chain_block_rebuild_on_reorg(app, mill_block, wallet):
     """Forcing a rebuild (via _rebuild_longest_chain_blocks) wipes
-    the table and repopulates it from the longest chain's CTE walk
+    the table and repopulates it from the longest chain's prev-walk
     so the contents match exactly.
     """
     with app.app_context():
@@ -397,11 +397,9 @@ def test_longest_chain_block_rebuild_on_reorg(app, mill_block, wallet):
         longest._rebuild_longest_chain_blocks()
         db.session.commit()
 
-        # Table is back to 3 rows in tip→genesis order matching CTE.
-        cte_ids = [
-            b.id
-            for b in db.session.execute(longest.block.block_chain).scalars()
-        ]
+        # Table is back to 3 rows in tip→genesis order matching the
+        # prev-walk oracle.
+        oracle_ids = _pythonic_ancestry_ids(longest.block)
         mat_ids = [
             r.block_id
             for r in db.session.execute(
@@ -412,15 +410,13 @@ def test_longest_chain_block_rebuild_on_reorg(app, mill_block, wallet):
             .scalars()
             .all()
         ]
-        assert cte_ids == mat_ids
+        assert oracle_ids == mat_ids
         assert len(mat_ids) == 3
 
 
-def test_iterative_walk_matches_cte(app, mill_block, wallet):
+def test_iterative_walk_matches_prev_walk(app, mill_block, wallet):
     """_rebuild_longest_chain_blocks via current.prev produces the
-    same block ordering as the prior recursive-CTE walk would have.
-    Uses self.block.block_chain (still defined; used as fallback)
-    as ground truth.
+    same block ordering as the pure-Python prev-walk oracle.
     """
     with app.app_context():
         for _ in range(10):
@@ -428,11 +424,8 @@ def test_iterative_walk_matches_cte(app, mill_block, wallet):
         longest = ChainDAO.longest()
         assert longest is not None
 
-        # Capture CTE ground truth before rebuild.
-        cte_ids = [
-            b.id
-            for b in db.session.execute(longest.block.block_chain).scalars()
-        ]
+        # Capture prev-walk ground truth before rebuild.
+        oracle_ids = _pythonic_ancestry_ids(longest.block)
 
         # Force a rebuild via the iterative walk (also runs on bootstrap
         # by sync_longest_chain_blocks; here we exercise it directly).
@@ -449,7 +442,7 @@ def test_iterative_walk_matches_cte(app, mill_block, wallet):
             .scalars()
             .all()
         ]
-        assert cte_ids == mat_ids
+        assert oracle_ids == mat_ids
         assert len(mat_ids) == 10
 
 
@@ -809,15 +802,42 @@ def _build_canonical_chain_with_spend(add_chain_block, time_stepper, wallet):
     return chain, block1, block2, t.txid
 
 
-def _cte_get_block_in_chain(block_dao, block_hash=None, idx=None):
-    """Ground-truth get_block_in_chain via the recursive CTE."""
-    block_alias = db.aliased(BlockDAO, block_dao.block_chain.subquery())
-    stmt = db.select(BlockDAO).join(block_alias, BlockDAO.id == block_alias.id)
+def _oracle_get_block_in_chain(block_dao, block_hash=None, idx=None):
+    """Ground-truth get_block_in_chain via the Python prev-walk ancestry."""
+    ids = _pythonic_ancestry_ids(block_dao)
+    stmt = db.select(BlockDAO).where(BlockDAO.id.in_(ids))
     if block_hash is not None:
         stmt = stmt.where(BlockDAO.block_hash == block_hash)
     if idx is not None:
         stmt = stmt.where(BlockDAO.idx == idx)
     return db.session.execute(stmt).scalar_one_or_none()
+
+
+def _oracle_txn_in_chain(block_dao, txid):
+    ids = _pythonic_ancestry_ids(block_dao)
+    return db.session.execute(
+        db.select(TransactionDAO)
+        .join(TransactionDAO.blocks)
+        .where(BlockDAO.id.in_(ids))
+        .where(TransactionDAO.txid == txid)
+    ).scalar_one_or_none()
+
+
+def _oracle_inflow_exists(block_dao, outflow_txid, outflow_idx):
+    ids = _pythonic_ancestry_ids(block_dao)
+    hit = (
+        db.session.execute(
+            db.select(InflowDAO)
+            .join(InflowDAO.transaction)
+            .join(TransactionDAO.blocks)
+            .where(BlockDAO.id.in_(ids))
+            .where(InflowDAO.outflow_txid == outflow_txid)
+            .where(InflowDAO.outflow_idx == outflow_idx)
+        )
+        .scalars()
+        .first()
+    )
+    return 1 if hit is not None else 0
 
 
 def _build_fork(time_stepper, wallet, subject):
@@ -904,29 +924,15 @@ def test_hot_path_methods_match_cte_canonical(
         assert tip is not None
 
         for txid in (spend_txid, cb1_txid, 'missing'):
-            cte = db.session.execute(
-                tip.transactions_chain.where(TransactionDAO.txid == txid)
-            ).scalar_one_or_none()
+            oracle = _oracle_txn_in_chain(tip, txid)
             new = tip.get_transaction_in_chain(txid)
-            assert (new.id if new else None) == (cte.id if cte else None), (
-                f'txn mismatch for txid={txid!r}'
-            )
+            assert (new.id if new else None) == (
+                oracle.id if oracle else None
+            ), f'txn mismatch for txid={txid!r}'
 
         for otxid, oidx in ((cb1_txid, 0), ('missing', 0)):
-            cte_exists = (
-                1
-                if db.session.execute(
-                    tip.inflows_chain.where(
-                        InflowDAO.outflow_txid == otxid,
-                        InflowDAO.outflow_idx == oidx,
-                    )
-                )
-                .scalars()
-                .first()
-                is not None
-                else 0
-            )
-            assert tip.inflows_in_chain_count(otxid, oidx) == cte_exists, (
+            oracle_exists = _oracle_inflow_exists(tip, otxid, oidx)
+            assert tip.inflows_in_chain_count(otxid, oidx) == oracle_exists, (
                 f'inflow-existence mismatch for outflow=({otxid!r}, {oidx})'
             )
 
@@ -936,10 +942,10 @@ def test_hot_path_methods_match_cte_canonical(
             {'idx': 1},
             {'block_hash': 'missing'},
         ):
-            cte_block = _cte_get_block_in_chain(tip, **kwargs)
+            oracle_block = _oracle_get_block_in_chain(tip, **kwargs)
             new_block = tip.get_block_in_chain(**kwargs)
             assert (new_block.id if new_block else None) == (
-                cte_block.id if cte_block else None
+                oracle_block.id if oracle_block else None
             ), f'block mismatch for {kwargs!r}'
 
 
@@ -954,49 +960,35 @@ def test_hot_path_methods_match_cte_fork(app, time_stepper, wallet, subject):
         assert fork._ancestry()[0]  # non-empty divergent suffix
 
         for txid in (f['fork_cb_txid'], f['ancestor_cb_txid'], 'missing'):
-            cte = db.session.execute(
-                fork.transactions_chain.where(TransactionDAO.txid == txid)
-            ).scalar_one_or_none()
+            oracle = _oracle_txn_in_chain(fork, txid)
             new = fork.get_transaction_in_chain(txid)
-            assert (new.id if new else None) == (cte.id if cte else None), (
-                f'txn mismatch for txid={txid!r}'
-            )
+            assert (new.id if new else None) == (
+                oracle.id if oracle else None
+            ), f'txn mismatch for txid={txid!r}'
 
         for kwargs in (
             {'block_hash': f['block_2b'].block_hash},
             {'block_hash': f['block_1'].block_hash},
             {'idx': 0},
         ):
-            cte_block = _cte_get_block_in_chain(fork, **kwargs)
+            oracle_block = _oracle_get_block_in_chain(fork, **kwargs)
             new_block = fork.get_block_in_chain(**kwargs)
             assert (new_block.id if new_block else None) == (
-                cte_block.id if cte_block else None
+                oracle_block.id if oracle_block else None
             ), f'block mismatch for {kwargs!r}'
 
         # The fork's divergent suffix consumes block_1's coinbase; check it
-        # against the CTE ground truth (hit) plus a miss. inflows_in_chain_count
-        # is 0/1 existence, not a true count.
+        # against the prev-walk oracle (hit) plus a miss.
+        # inflows_in_chain_count is 0/1 existence, not a true count.
         for otxid, oidx, expected in (
             (f['spend_outflow_txid'], 0, 1),
             ('missing', 0, 0),
         ):
-            cte_exists = (
-                1
-                if db.session.execute(
-                    fork.inflows_chain.where(
-                        InflowDAO.outflow_txid == otxid,
-                        InflowDAO.outflow_idx == oidx,
-                    )
-                )
-                .scalars()
-                .first()
-                is not None
-                else 0
+            oracle_exists = _oracle_inflow_exists(fork, otxid, oidx)
+            assert oracle_exists == expected, (
+                f'oracle ground-truth mismatch for outflow=({otxid!r}, {oidx})'
             )
-            assert cte_exists == expected, (
-                f'CTE ground-truth mismatch for outflow=({otxid!r}, {oidx})'
-            )
-            assert fork.inflows_in_chain_count(otxid, oidx) == cte_exists, (
+            assert fork.inflows_in_chain_count(otxid, oidx) == oracle_exists, (
                 f'inflow-existence mismatch for outflow=({otxid!r}, {oidx})'
             )
 
@@ -1005,7 +997,7 @@ def test_hot_path_methods_match_cte_empty_materialization(
     app, add_chain_block, time_stepper, wallet
 ):
     """With an empty LongestChainBlockDAO (bootstrap), _ancestry walks the
-    whole chain into divergent_ids and the methods still match the CTE.
+    whole chain into divergent_ids and the methods still match the oracle.
     """
     with app.app_context():
         _chain, block1, block2, spend_txid = _build_canonical_chain_with_spend(
@@ -1022,95 +1014,32 @@ def test_hot_path_methods_match_cte_empty_materialization(
         assert len(divergent) == 2  # whole chain is "divergent"
 
         for txid in (spend_txid, block1.coinbase.txid, 'missing'):
-            cte = db.session.execute(
-                tip.transactions_chain.where(TransactionDAO.txid == txid)
-            ).scalar_one_or_none()
+            oracle = _oracle_txn_in_chain(tip, txid)
             new = tip.get_transaction_in_chain(txid)
-            assert (new.id if new else None) == (cte.id if cte else None), (
-                f'txn mismatch for txid={txid!r}'
-            )
+            assert (new.id if new else None) == (
+                oracle.id if oracle else None
+            ), f'txn mismatch for txid={txid!r}'
         assert tip.get_block_in_chain(idx=0) is not None
         assert tip.inflows_in_chain_count(block1.coinbase.txid, 0) == 1
 
 
-def test_hot_path_methods_never_touch_recursive_cte(
-    app, add_chain_block, time_stepper, wallet
-):
-    """get_transaction_in_chain / inflows_in_chain_count / get_block_in_chain
-    must not access the recursive _block_chain CTE on canonical OR fork
-    anchors. Booby-trap _block_chain to raise; the three methods must still
-    return correct results.
+def test_recursive_cte_is_deleted():
+    """#158 capstone: the recursive CTE and its *_chain builders must be
+    gone from every DAO — no reachable recursive-CTE code remains.
     """
-    with app.app_context():
-        _chain, block1, block2, spend_txid = _build_canonical_chain_with_spend(
-            add_chain_block, time_stepper, wallet
+    for attr in (
+        '_block_chain',
+        'block_chain',
+        'transactions_chain',
+        'outflows_chain',
+        'inflows_chain',
+    ):
+        assert not hasattr(BlockDAO, attr), (
+            f'BlockDAO.{attr} should be deleted in #158'
         )
-        cb1_txid = block1.coinbase.txid
-        tip_dao = BlockDAO.get(block2.block_hash)
-        genesis_dao = BlockDAO.get(block1.block_hash)
-        assert tip_dao is not None
-        assert genesis_dao is not None
-
-        with patch.object(
-            BlockDAO, '_block_chain', new_callable=PropertyMock
-        ) as cte_mock:
-            cte_mock.side_effect = AssertionError(
-                'hot-path method accessed the recursive CTE'
-            )
-            # canonical anchor (the tip)
-            assert tip_dao.get_transaction_in_chain(spend_txid) is not None
-            assert tip_dao.get_transaction_in_chain('does-not-exist') is None
-            # the spend consumed block1's coinbase outflow → present (0/1
-            # existence, not a true count)
-            assert tip_dao.inflows_in_chain_count(cb1_txid, 0) == 1
-            assert tip_dao.inflows_in_chain_count('nope', 0) == 0
-            assert (
-                tip_dao.get_block_in_chain(block_hash=block1.block_hash)
-                is not None
-            )
-            assert tip_dao.get_block_in_chain(idx=0) is not None
-            # an ancestor anchor still resolves its own ancestry
-            assert genesis_dao.get_transaction_in_chain(cb1_txid) is not None
-
-
-def test_hot_path_methods_never_touch_recursive_cte_fork(
-    app, time_stepper, wallet, subject
-):
-    """The divergent (fork) branch of all three methods — including
-    get_block_in_chain's `if divergent:` block — must execute CTE-free.
-    Booby-trap _block_chain over a genuine fork anchor.
-    """
-    with app.app_context():
-        f = _build_fork(time_stepper, wallet, subject)
-        fork = f['fork']
-        assert fork is not None
-        # Confirm a real divergent suffix BEFORE arming the trap.
-        assert fork._ancestry()[0]
-
-        with patch.object(
-            BlockDAO, '_block_chain', new_callable=PropertyMock
-        ) as cte_mock:
-            cte_mock.side_effect = AssertionError(
-                'hot-path method accessed the recursive CTE'
-            )
-            # get_transaction_in_chain — divergent-suffix hit + miss.
-            assert fork.get_transaction_in_chain(f['fork_cb_txid']) is not None
-            assert fork.get_transaction_in_chain('does-not-exist') is None
-            # get_block_in_chain — fork tip (divergent) and shared prefix.
-            assert (
-                fork.get_block_in_chain(block_hash=f['block_2b'].block_hash)
-                is not None
-            )
-            assert (
-                fork.get_block_in_chain(block_hash=f['block_1'].block_hash)
-                is not None
-            )
-            assert fork.get_block_in_chain(idx=0) is not None
-            # inflows_in_chain_count — inflow consumed in the divergent
-            # suffix is present; a missing one is absent (0/1 existence,
-            # not a true count).
-            assert fork.inflows_in_chain_count(f['spend_outflow_txid'], 0) == 1
-            assert fork.inflows_in_chain_count('nope', 0) == 0
+    assert not hasattr(TransactionDAO, 'transactions_chain')
+    assert not hasattr(OutflowDAO, 'outflows_chain')
+    assert not hasattr(InflowDAO, 'inflows_chain')
 
 
 def test_ancestry_read_paths_match_oracle_canonical(
