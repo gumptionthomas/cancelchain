@@ -309,9 +309,8 @@ class BlockDAO(Base):
         with the canonical prefix (`LongestChainBlockDAO.position <= cap`) as a
         single composable predicate. Degenerates to materialized membership for
         a canonical anchor (`divergent` empty, `cap` = tip position). Ordered
-        by `idx` desc to match the recursive `block_chain` CTE's tip-first
-        ordering, so consumers that read rows directly (not just as a
-        membership subquery) see the same order.
+        by `idx` desc (tip→genesis), so consumers that read rows directly
+        (not just as a membership subquery) see a consistent order.
         """
         divergent, cap = self._ancestry()
         clauses = []
@@ -505,9 +504,9 @@ class BlockDAO(Base):
     def longest_chain_blocks_q(cls) -> Select[tuple[BlockDAO]]:
         """Blocks in the longest chain, ordered tip→genesis.
 
-        Matches BlockDAO.block_chain's tip-first ordering so consumers
-        that compose on the result (subquery / filter / first) see the
-        same row order.
+        Ordered by `position` desc (tip→genesis) so consumers that
+        compose on the result (subquery / filter / first) see a
+        consistent row order.
         """
         return (  # type: ignore[no-any-return]
             db.select(BlockDAO)

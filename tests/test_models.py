@@ -912,7 +912,7 @@ def _build_fork(time_stepper, wallet, subject):
     }
 
 
-def test_hot_path_methods_match_cte_canonical(
+def test_hot_path_methods_match_oracle_canonical(
     app, add_chain_block, time_stepper, wallet
 ):
     with app.app_context():
@@ -949,9 +949,9 @@ def test_hot_path_methods_match_cte_canonical(
             ), f'block mismatch for {kwargs!r}'
 
 
-def test_hot_path_methods_match_cte_fork(app, time_stepper, wallet, subject):
+def test_hot_path_methods_match_oracle_fork(app, time_stepper, wallet, subject):
     """A fork (non-longest) block resolves its divergent-suffix ancestry the
-    same as the recursive CTE would.
+    same as the prev-walk oracle.
     """
     with app.app_context():
         f = _build_fork(time_stepper, wallet, subject)
@@ -993,7 +993,7 @@ def test_hot_path_methods_match_cte_fork(app, time_stepper, wallet, subject):
             )
 
 
-def test_hot_path_methods_match_cte_empty_materialization(
+def test_hot_path_methods_match_oracle_empty_materialization(
     app, add_chain_block, time_stepper, wallet
 ):
     """With an empty LongestChainBlockDAO (bootstrap), _ancestry walks the
