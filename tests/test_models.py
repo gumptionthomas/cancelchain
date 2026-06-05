@@ -847,8 +847,9 @@ def _build_fork(time_stepper, wallet, subject):
     chain_a.seal_block(block_2b, wallet, metrics_2b)
     block_2b.mill()
 
-    # chain_a wins the (idx DESC, timestamp ASC) tiebreaker because block_2a
-    # has the earlier timestamp; add it first so it becomes canonical.
+    # block_2a has the earlier seal timestamp, so chain_a wins the
+    # (idx DESC, timestamp ASC) tiebreaker in ChainDAO.chains() and is
+    # canonical regardless of add order (timestamp is fixed at seal()).
     _ = next(time_step)
     chain_a.add_block(block_2a)
     chain_a.to_db()
@@ -887,7 +888,9 @@ def test_hot_path_methods_match_cte_canonical(
                 tip.transactions_chain.where(TransactionDAO.txid == txid)
             ).scalar_one_or_none()
             new = tip.get_transaction_in_chain(txid)
-            assert (new.id if new else None) == (cte.id if cte else None)
+            assert (new.id if new else None) == (cte.id if cte else None), (
+                f'txn mismatch for txid={txid!r}'
+            )
 
         for otxid, oidx in ((cb1_txid, 0), ('missing', 0)):
             cte_exists = (
@@ -903,7 +906,9 @@ def test_hot_path_methods_match_cte_canonical(
                 is not None
                 else 0
             )
-            assert tip.inflows_in_chain_count(otxid, oidx) == cte_exists
+            assert tip.inflows_in_chain_count(otxid, oidx) == cte_exists, (
+                f'inflow-existence mismatch for outflow=({otxid!r}, {oidx})'
+            )
 
         for kwargs in (
             {'block_hash': block1.block_hash},
@@ -915,7 +920,7 @@ def test_hot_path_methods_match_cte_canonical(
             new_block = tip.get_block_in_chain(**kwargs)
             assert (new_block.id if new_block else None) == (
                 cte_block.id if cte_block else None
-            )
+            ), f'block mismatch for {kwargs!r}'
 
 
 def test_hot_path_methods_match_cte_fork(app, time_stepper, wallet, subject):
@@ -933,7 +938,9 @@ def test_hot_path_methods_match_cte_fork(app, time_stepper, wallet, subject):
                 fork.transactions_chain.where(TransactionDAO.txid == txid)
             ).scalar_one_or_none()
             new = fork.get_transaction_in_chain(txid)
-            assert (new.id if new else None) == (cte.id if cte else None)
+            assert (new.id if new else None) == (cte.id if cte else None), (
+                f'txn mismatch for txid={txid!r}'
+            )
 
         for kwargs in (
             {'block_hash': f['block_2b'].block_hash},
@@ -944,10 +951,11 @@ def test_hot_path_methods_match_cte_fork(app, time_stepper, wallet, subject):
             new_block = fork.get_block_in_chain(**kwargs)
             assert (new_block.id if new_block else None) == (
                 cte_block.id if cte_block else None
-            )
+            ), f'block mismatch for {kwargs!r}'
 
-        # The fork's divergent suffix consumes block_1's coinbase; count it
-        # against the CTE ground truth (hit) plus a miss.
+        # The fork's divergent suffix consumes block_1's coinbase; check it
+        # against the CTE ground truth (hit) plus a miss. inflows_in_chain_count
+        # is 0/1 existence, not a true count.
         for otxid, oidx, expected in (
             (f['spend_outflow_txid'], 0, 1),
             ('missing', 0, 0),
@@ -965,8 +973,12 @@ def test_hot_path_methods_match_cte_fork(app, time_stepper, wallet, subject):
                 is not None
                 else 0
             )
-            assert cte_exists == expected
-            assert fork.inflows_in_chain_count(otxid, oidx) == cte_exists
+            assert cte_exists == expected, (
+                f'CTE ground-truth mismatch for outflow=({otxid!r}, {oidx})'
+            )
+            assert fork.inflows_in_chain_count(otxid, oidx) == cte_exists, (
+                f'inflow-existence mismatch for outflow=({otxid!r}, {oidx})'
+            )
 
 
 def test_hot_path_methods_match_cte_empty_materialization(
@@ -994,7 +1006,9 @@ def test_hot_path_methods_match_cte_empty_materialization(
                 tip.transactions_chain.where(TransactionDAO.txid == txid)
             ).scalar_one_or_none()
             new = tip.get_transaction_in_chain(txid)
-            assert (new.id if new else None) == (cte.id if cte else None)
+            assert (new.id if new else None) == (cte.id if cte else None), (
+                f'txn mismatch for txid={txid!r}'
+            )
         assert tip.get_block_in_chain(idx=0) is not None
         assert tip.inflows_in_chain_count(block1.coinbase.txid, 0) == 1
 
@@ -1026,7 +1040,8 @@ def test_hot_path_methods_never_touch_recursive_cte(
             # canonical anchor (the tip)
             assert tip_dao.get_transaction_in_chain(spend_txid) is not None
             assert tip_dao.get_transaction_in_chain('does-not-exist') is None
-            # the spend consumed block1's coinbase outflow → counted once
+            # the spend consumed block1's coinbase outflow → present (0/1
+            # existence, not a true count)
             assert tip_dao.inflows_in_chain_count(cb1_txid, 0) == 1
             assert tip_dao.inflows_in_chain_count('nope', 0) == 0
             assert (
@@ -1072,6 +1087,7 @@ def test_hot_path_methods_never_touch_recursive_cte_fork(
             )
             assert fork.get_block_in_chain(idx=0) is not None
             # inflows_in_chain_count — inflow consumed in the divergent
-            # suffix counts once; a missing one is zero.
+            # suffix is present; a missing one is absent (0/1 existence,
+            # not a true count).
             assert fork.inflows_in_chain_count(f['spend_outflow_txid'], 0) == 1
             assert fork.inflows_in_chain_count('nope', 0) == 0
