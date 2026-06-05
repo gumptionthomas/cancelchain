@@ -200,3 +200,52 @@ def test_wildcard_not_honored_for_miller_at_match_time(app):
     with app.app_context():
         app.config['MILLER_ADDRESSES'] = ['*']
         assert Role.MILLER not in Role.address_roles('not-a-listed-address')
+
+
+def test_wildcard_not_honored_for_admin_at_match_time(app):
+    # Defense-in-depth: a runtime-mutated ADMIN "*" must NOT grant ADMIN.
+    with app.app_context():
+        app.config['ADMIN_ADDRESSES'] = ['*']
+        assert Role.ADMIN not in Role.address_roles('not-a-listed-address')
+
+
+def test_wildcard_transactor_authorizes_arbitrary_wallet(
+    app, host, requests_proxy, reader_wallet, mill_block
+):
+    """End-to-end: wildcard TRANSACTOR_ADDRESSES grants access through
+    the real authorize_transactor decorator.
+
+    reader_wallet is configured READER-only (not in TRANSACTOR_ADDRESSES).
+    Without the wildcard it is 403 at a transactor-gated GET endpoint;
+    with TRANSACTOR_ADDRESSES=['*'] the same signed request gets past auth
+    (the endpoint may still 400 on missing query params, but NOT 403).
+    """
+    with app.app_context():
+        mill_block(reader_wallet)
+        path = '/api/transaction/opposition'
+        # Without the wildcard: reader_wallet has no TRANSACTOR role -> 403.
+        app.config['TRANSACTOR_ADDRESSES'] = []
+        headers = signing.sign_headers(
+            reader_wallet,
+            method='GET',
+            path=path,
+            query='',
+            body=b'',
+            node_host=_node(host),
+        )
+        denied = requests_proxy.get(path, headers=headers, timeout=60)
+        assert denied.status_code == httpx.codes.FORBIDDEN
+        # With the wildcard: any authenticated wallet -> TRANSACTOR.
+        # The endpoint may 400 on missing query params; that still proves
+        # authorize_transactor did NOT reject the request (not 403).
+        app.config['TRANSACTOR_ADDRESSES'] = ['*']
+        headers = signing.sign_headers(
+            reader_wallet,
+            method='GET',
+            path=path,
+            query='',
+            body=b'',
+            node_host=_node(host),
+        )
+        allowed = requests_proxy.get(path, headers=headers, timeout=60)
+        assert allowed.status_code != httpx.codes.FORBIDDEN
