@@ -76,7 +76,7 @@ Two stacked layers, both read by `create_app()` in `src/gumptionchain/__init__.p
 1. **`FLASK_*` env vars** → injected into `app.config` via `Flask.config.from_prefixed_env()` (strips the `FLASK_` prefix). This is how `SECRET_KEY`, `SQLALCHEMY_DATABASE_URI`, etc. get set.
 2. **`GC_*` env vars** → loaded into `EnvAppSettings` (`src/gumptionchain/config.py`, dataclass), then `app.config.from_object`. Values are JSON-parsed when possible, so list/bool settings (`GC_PEERS`, `GC_MILLER_ADDRESSES`, `GC_API_ASYNC_PROCESSING`) must be valid JSON strings in the env.
 
-Key `GC_*` settings: `NODE_HOST`, `PEERS` (list of `http(s)://<address>@host` URLs — `host` identifies the peer node, but the username `<address>` is the **local** wallet address this node signs requests *as* when talking to that peer: `create_clients` looks it up in `app.wallets`, so this node must hold that wallet's private key and the peer must list the address in its role allowlist), `WALLET_DIR`, `DEFAULT_COMMAND_HOST`, `{ADMIN,MILLER,TRANSACTOR,READER}_ADDRESSES` (exact-address allowlists matched against the authenticated address in `api.Role.address_role`; `READER_ADDRESSES` may contain the literal `"*"` to grant READER to any authenticated wallet; a non-address entry, or `"*"` outside `READER_ADDRESSES`, is rejected at startup via `Role.validate_config` → `InvalidRoleConfigError`), `MAX_CHAIN_FILL_DEPTH` (env `GC_MAX_CHAIN_FILL_DEPTH`, default 50000 — caps a single `fill_chain` ancestor walk), `MAX_PENDING_TXNS` (env `GC_MAX_PENDING_TXNS`, default 10000 — caps `pending_txns` mempool admission; a full pool returns HTTP 503). `WALLET_DIR` is walked at startup; every `*.pem` becomes an in-memory `Wallet` in `app.wallets`, keyed by address.
+Key `GC_*` settings: `NODE_HOST`, `PEERS` (list of `http(s)://<address>@host` URLs — `host` identifies the peer node, but the username `<address>` is the **local** wallet address this node signs requests *as* when talking to that peer: `create_clients` looks it up in `app.wallets`, so this node must hold that wallet's private key and the peer must list the address in its role allowlist), `WALLET_DIR`, `DEFAULT_COMMAND_HOST`, `{ADMIN,MILLER,TRANSACTOR,READER}_ADDRESSES` (exact-address allowlists matched against the authenticated address in `api.Role.address_role`; `READER_ADDRESSES` and `TRANSACTOR_ADDRESSES` may contain the literal `"*"` to grant that role to any authenticated wallet; a non-address entry, or `"*"` outside `READER_ADDRESSES`/`TRANSACTOR_ADDRESSES`, is rejected at startup via `Role.validate_config` → `InvalidRoleConfigError`), `MAX_CHAIN_FILL_DEPTH` (env `GC_MAX_CHAIN_FILL_DEPTH`, default 50000 — caps a single `fill_chain` ancestor walk), `MAX_PENDING_TXNS` (env `GC_MAX_PENDING_TXNS`, default 10000 — caps `pending_txns` mempool admission; a full pool returns HTTP 503). `WALLET_DIR` is walked at startup; every `*.pem` becomes an in-memory `Wallet` in `app.wallets`, keyed by address.
 
 ## Architecture
 
@@ -164,3 +164,17 @@ When `GC_API_ASYNC_PROCESSING=true`, block/txn POSTs return `202` without doing 
 - **Pin third-party GitHub Actions to commit SHAs**, not tags — tags can be retargeted to point at malicious code. Keep the `# vX.Y.Z` trailing comment for human readability and let Dependabot bump the SHA + comment together.
 - **Validate Dockerfile changes locally** with `docker build --target builder -t cc-test .` (or a full build for later stages) before pushing. CI workflows here don't run the Docker build — syntax errors will silently pass and break the deploy. Specific gotcha: in Dockerfiles, `#` only starts a comment at the *beginning* of a line; trailing `# whatever` on a `COPY`/`RUN` line is parsed as additional arguments.
 - **Avoid ad-hoc Node/npm tooling.** The npm ecosystem is under sustained supply-chain attack (typosquats, post-install hooks, compromised maintainer tokens). Prefer Python/uvx or plain text alternatives; if a Node dep is unavoidable, surface it explicitly so the dependency surface is reviewable.
+
+## Open transacting & anti-spam (EGU)
+
+`TRANSACTOR_ADDRESSES` accepts the `"*"` match-all sentinel (like `READER`), so
+any authenticated wallet may submit transactions — opt in with
+`GC_TRANSACTOR_ADDRESSES='["*"]'`. This exposes *load, not theft*: balance /
+ownership / double-spend validation still hold, and `MILLER`/`ADMIN` stay
+exact-allowlist. Operators running with the wildcard should:
+- keep the `MAX_PENDING_TXNS` cap (a full pool returns HTTP 503 — graceful), and
+- put a **per-IP rate limit at the reverse proxy** in front of the node.
+
+A heavier defense — a hashcash-style **submit-PoW** verified before
+signature/validation work — is specced (issue #151) as the escalation if real
+flooding appears; it is intentionally **not** built yet.

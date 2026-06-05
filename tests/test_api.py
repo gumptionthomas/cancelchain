@@ -275,9 +275,9 @@ def test_validate_config_rejects_nonaddress(app):
         Role.validate_config(app.config)
 
 
-def test_validate_config_rejects_wildcard_outside_reader(app):
+def test_validate_config_rejects_wildcard_in_miller_and_admin(app):
+    # READER and TRANSACTOR permit "*"; MILLER and ADMIN must not.
     for role_key in (
-        'TRANSACTOR_ADDRESSES',
         'MILLER_ADDRESSES',
         'ADMIN_ADDRESSES',
     ):
@@ -289,6 +289,13 @@ def test_validate_config_rejects_wildcard_outside_reader(app):
 
 def test_validate_config_accepts_reader_wildcard_and_exact(app, wallet):
     app.config['READER_ADDRESSES'] = ['*']
+    app.config['ADMIN_ADDRESSES'] = [wallet.address]
+    Role.validate_config(app.config)  # must not raise
+
+
+def test_validate_config_accepts_transactor_wildcard_and_exact(app, wallet):
+    # "*" in TRANSACTOR plus an exact entry in a higher tier is valid.
+    app.config['TRANSACTOR_ADDRESSES'] = ['*']
     app.config['ADMIN_ADDRESSES'] = [wallet.address]
     Role.validate_config(app.config)  # must not raise
 
@@ -306,10 +313,10 @@ def test_create_app_rejects_overbroad_admin_config():
         )
 
 
-def test_address_role_wildcard_ignored_outside_reader(app, wallet):
+def test_address_role_wildcard_ignored_for_miller_and_admin(app, wallet):
     # Defense-in-depth: even if '*' is injected into a higher tier at
     # runtime (bypassing startup validation), match-time honors '*' only
-    # for READER — it must not escalate.
+    # for READER or TRANSACTOR — MILLER/ADMIN must never escalate via '*'.
     with app.app_context():
         _clear_role_config(app)
         app.config['MILLER_ADDRESSES'] = ['*']

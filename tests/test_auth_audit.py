@@ -14,9 +14,12 @@ matching the audit document's per-adversary sections.
 """
 
 import httpx
+import pytest
 
 from gumptionchain import signing
+from gumptionchain.api import Role
 from gumptionchain.api_client import ApiClient
+from gumptionchain.exceptions import InvalidRoleConfigError
 from gumptionchain.miller import Miller
 from gumptionchain.util import host_address
 
@@ -159,3 +162,90 @@ def test_a5_b_stale_role_rejected_after_config_revocation(
             assert r2.status_code == httpx.codes.FORBIDDEN
         finally:
             app.config['MILLER_ADDRESSES'] = original_miller_addresses
+
+
+def test_validate_config_allows_wildcard_in_transactor():
+    # Should not raise.
+    Role.validate_config({'TRANSACTOR_ADDRESSES': ['*']})
+
+
+def test_validate_config_allows_wildcard_in_reader():
+    Role.validate_config({'READER_ADDRESSES': ['*']})
+
+
+def test_validate_config_rejects_wildcard_in_miller():
+    with pytest.raises(InvalidRoleConfigError):
+        Role.validate_config({'MILLER_ADDRESSES': ['*']})
+
+
+def test_validate_config_rejects_wildcard_in_admin():
+    with pytest.raises(InvalidRoleConfigError):
+        Role.validate_config({'ADMIN_ADDRESSES': ['*']})
+
+
+def test_wildcard_transactor_grants_transactor_role(app):
+    with app.app_context():
+        app.config['TRANSACTOR_ADDRESSES'] = ['*']
+        assert Role.address_role('not-a-listed-address') is Role.TRANSACTOR
+
+
+def test_no_wildcard_unlisted_is_not_transactor(app):
+    with app.app_context():
+        app.config['TRANSACTOR_ADDRESSES'] = []
+        assert Role.address_role('not-a-listed-address') is not Role.TRANSACTOR
+
+
+def test_wildcard_not_honored_for_miller_at_match_time(app):
+    # Defense-in-depth: a runtime-mutated MILLER "*" must NOT grant MILLER.
+    with app.app_context():
+        app.config['MILLER_ADDRESSES'] = ['*']
+        assert Role.MILLER not in Role.address_roles('not-a-listed-address')
+
+
+def test_wildcard_not_honored_for_admin_at_match_time(app):
+    # Defense-in-depth: a runtime-mutated ADMIN "*" must NOT grant ADMIN.
+    with app.app_context():
+        app.config['ADMIN_ADDRESSES'] = ['*']
+        assert Role.ADMIN not in Role.address_roles('not-a-listed-address')
+
+
+def test_wildcard_transactor_authorizes_arbitrary_wallet(
+    app, host, requests_proxy, reader_wallet, mill_block
+):
+    """End-to-end: wildcard TRANSACTOR_ADDRESSES grants access through
+    the real authorize_transactor decorator.
+
+    reader_wallet is configured READER-only (not in TRANSACTOR_ADDRESSES).
+    Without the wildcard it is 403 at a transactor-gated GET endpoint;
+    with TRANSACTOR_ADDRESSES=['*'] the same signed request gets past auth
+    (the endpoint may still 400 on missing query params, but NOT 403).
+    """
+    with app.app_context():
+        mill_block(reader_wallet)
+        path = '/api/transaction/opposition'
+        # Without the wildcard: reader_wallet has no TRANSACTOR role -> 403.
+        app.config['TRANSACTOR_ADDRESSES'] = []
+        headers = signing.sign_headers(
+            reader_wallet,
+            method='GET',
+            path=path,
+            query='',
+            body=b'',
+            node_host=_node(host),
+        )
+        denied = requests_proxy.get(path, headers=headers, timeout=60)
+        assert denied.status_code == httpx.codes.FORBIDDEN
+        # With the wildcard: any authenticated wallet -> TRANSACTOR.
+        # The endpoint may 400 on missing query params; that still proves
+        # authorize_transactor did NOT reject the request (not 403).
+        app.config['TRANSACTOR_ADDRESSES'] = ['*']
+        headers = signing.sign_headers(
+            reader_wallet,
+            method='GET',
+            path=path,
+            query='',
+            body=b'',
+            node_host=_node(host),
+        )
+        allowed = requests_proxy.get(path, headers=headers, timeout=60)
+        assert allowed.status_code != httpx.codes.FORBIDDEN
