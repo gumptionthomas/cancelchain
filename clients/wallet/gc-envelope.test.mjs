@@ -31,3 +31,27 @@ test('each seal uses a fresh IV', async () => {
   assert.notEqual(hex(a.iv), hex(b.iv));
   assert.notEqual(hex(a.ciphertext), hex(b.ciphertext));
 });
+
+import { sealWithKey, openWithKey } from './gc-envelope.mjs';
+
+test('sealWithKey/openWithKey round-trip with a fixed CryptoKey', async () => {
+  const raw = new Uint8Array(32).fill(5);
+  const key = await crypto.subtle.importKey(
+    'raw', raw, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt'],
+  );
+  const msg = new TextEncoder().encode('hello-primitive');
+  const env = await sealWithKey(key, msg);
+  assert.equal(env.iv.length, 12);
+  const out = await openWithKey(key, env);
+  assert.deepEqual(out, msg);
+});
+
+test('openWithKey fails closed on a tampered ciphertext', async () => {
+  const raw = new Uint8Array(32).fill(6);
+  const key = await crypto.subtle.importKey(
+    'raw', raw, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt'],
+  );
+  const env = await sealWithKey(key, new TextEncoder().encode('x'));
+  env.ciphertext[0] ^= 0xff;
+  await assert.rejects(() => openWithKey(key, env));
+});

@@ -1,6 +1,8 @@
-// Authenticated at-rest encryption for the wallet key. HKDF-SHA256 derives an
-// AES-GCM-256 key from a 32-byte WebAuthn PRF output; random 12-byte IV per
-// seal; GCM's auth tag makes tampering fail closed. Pure Web Crypto.
+// Authenticated at-rest encryption for the wallet key. Exposes a key-level
+// primitive (sealWithKey/openWithKey) over AES-GCM-256 plus the PRF-keyed
+// seal/open wrappers: HKDF-SHA256 derives an AES-GCM-256 key from a 32-byte
+// WebAuthn PRF output; random 12-byte IV per seal; GCM's auth tag makes
+// tampering fail closed. Pure Web Crypto.
 const HKDF_INFO = new TextEncoder().encode('gc-wallet-aesgcm-v1');
 const IV_BYTES = 12;
 
@@ -21,19 +23,25 @@ async function deriveAesKey(prfOutput) {
   );
 }
 
-export async function seal(prfOutput, bytes) {
-  const key = await deriveAesKey(prfOutput);
+export async function sealWithKey(key, bytes) {
   const iv = crypto.getRandomValues(new Uint8Array(IV_BYTES));
   const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, bytes);
   return { iv, ciphertext: new Uint8Array(ct) };
 }
 
-export async function open(prfOutput, { iv, ciphertext }) {
-  const key = await deriveAesKey(prfOutput);
+export async function openWithKey(key, { iv, ciphertext }) {
   const pt = await crypto.subtle.decrypt(
     { name: 'AES-GCM', iv: Uint8Array.from(iv) },
     key,
     Uint8Array.from(ciphertext),
   );
   return new Uint8Array(pt);
+}
+
+export async function seal(prfOutput, bytes) {
+  return sealWithKey(await deriveAesKey(prfOutput), bytes);
+}
+
+export async function open(prfOutput, envelope) {
+  return openWithKey(await deriveAesKey(prfOutput), envelope);
 }

@@ -8,3 +8,11 @@ export class UnsupportedError extends Error {}
 
 // unlock() called with nothing stored.
 export class NoWalletError extends Error {}
+
+// Backup artifact is not a recognizable gc-wallet-backup, has an unknown
+// version, or is missing required fields — thrown before any crypto.
+export class BadBackupError extends Error {}
+
+// importEncrypted decrypt failed (wrong passphrase or tampered backup) —
+// re-thrown from the GCM tag mismatch so callers never see garbage plaintext.
+export class BadPassphraseError extends Error {}
