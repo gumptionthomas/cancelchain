@@ -77,3 +77,14 @@ export async function importEncrypted(backup, passphrase) {
   }
   return Wallet.fromPrivateKeyB58(td.decode(b58Bytes));
 }
+
+// Raw-string backup: the b58 private key itself. At-rest protection is the
+// user's password manager. Thin, documented wrappers over the #2.1 key seam so
+// all backup surface lives in one module.
+export async function exportPlain(wallet) {
+  return wallet.exportPrivateKeyB58();
+}
+
+export async function importPlain(b58) {
+  return Wallet.fromPrivateKeyB58(b58);
+}

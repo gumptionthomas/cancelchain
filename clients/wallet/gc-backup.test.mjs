@@ -77,3 +77,19 @@ test('importEncrypted rejects a malformed artifact (missing fields)', async () =
     BadBackupError,
   );
 });
+
+import { exportPlain, importPlain } from './gc-backup.mjs';
+
+test('exportPlain equals the wallet b58 private key', async () => {
+  const wallet = await Wallet.generate();
+  assert.equal(await exportPlain(wallet), await wallet.exportPrivateKeyB58());
+});
+
+test('exportPlain -> importPlain recovers a wallet that signs identically', async () => {
+  const wallet = await Wallet.generate();
+  const b58 = await exportPlain(wallet);
+  const recovered = await importPlain(b58);
+  assert.equal(await recovered.address(), await wallet.address());
+  const msg = new TextEncoder().encode('prove-it');
+  assert.equal(await recovered.sign(msg), await wallet.sign(msg));
+});
