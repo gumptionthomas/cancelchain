@@ -55,7 +55,8 @@ demo page (file download/upload, passphrase prompt, clipboard) is manual:
    the file, and enter the passphrase — confirm the recovered address matches
    step 1.
 5. Enter a **wrong** passphrase — confirm a clear `BadPassphraseError` message
-   and that no wallet is loaded.
+   is shown and that any currently loaded wallet is left unchanged (a failed
+   restore does not replace it).
 6. Click **Show raw key**, copy it; reload; paste into the import textarea and
    click **Import raw key** — confirm the address matches.
 

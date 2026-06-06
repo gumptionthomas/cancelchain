@@ -64,26 +64,43 @@ export async function importEncrypted(backup, passphrase) {
   if (
     !kdf
     || kdf.name !== 'PBKDF2'
-    || !kdf.salt
-    || typeof kdf.iterations !== 'number'
+    || kdf.hash !== 'SHA-256'
+    || typeof kdf.salt !== 'string'
+    || !Number.isSafeInteger(kdf.iterations)
     || kdf.iterations <= 0
-    || !iv
-    || !ciphertext
+    || typeof iv !== 'string'
+    || typeof ciphertext !== 'string'
   ) {
     throw new BadBackupError('malformed gc-wallet-backup artifact');
   }
-  const key = await deriveKey(passphrase, base64decode(kdf.salt), kdf.iterations);
+  // Decode the structural base64 fields up front: a decode failure here is a
+  // malformed artifact (BadBackupError), distinct from an authentic-but-wrong
+  // passphrase (BadPassphraseError) detected by the GCM tag below.
+  let salt;
+  let ivBytes;
+  let ctBytes;
+  try {
+    salt = base64decode(kdf.salt);
+    ivBytes = base64decode(iv);
+    ctBytes = base64decode(ciphertext);
+  } catch {
+    throw new BadBackupError('malformed gc-wallet-backup artifact');
+  }
+  const key = await deriveKey(passphrase, salt, kdf.iterations);
   let b58Bytes;
   try {
-    b58Bytes = await openWithKey(key, {
-      iv: base64decode(iv),
-      ciphertext: base64decode(ciphertext),
-    });
+    b58Bytes = await openWithKey(key, { iv: ivBytes, ciphertext: ctBytes });
   } catch {
     // GCM tag mismatch: wrong passphrase or tampered backup. Fail closed.
     throw new BadPassphraseError('wrong passphrase or corrupt backup');
   }
-  return Wallet.fromPrivateKeyB58(td.decode(b58Bytes));
+  try {
+    // GCM already authenticated the plaintext, so this should always succeed;
+    // map any residual decode/key failure to BadBackupError defensively.
+    return await Wallet.fromPrivateKeyB58(td.decode(b58Bytes));
+  } catch {
+    throw new BadBackupError('decrypted payload is not a valid wallet key');
+  }
 }
 
 // Raw-string backup: the b58 private key itself. At-rest protection is the

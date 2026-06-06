@@ -175,7 +175,9 @@
             a.href = url;
             a.download = 'gc-wallet-backup.json';
             a.click();
-            URL.revokeObjectURL(url);
+            // Defer the revoke: revoking immediately can abort the download
+            // before it starts in some browsers.
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
             show(`Downloaded gc-wallet-backup.json\naddress: ${backup.address}`);
           } catch (err) {
             fail('Download backup', err);

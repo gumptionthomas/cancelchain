@@ -89,6 +89,20 @@ test('importEncrypted rejects a non-positive kdf.iterations', async () => {
   await assert.rejects(() => importEncrypted(backup, PASS), BadBackupError);
 });
 
+test('importEncrypted rejects an unexpected kdf.hash', async () => {
+  const wallet = await Wallet.generate();
+  const backup = await exportEncrypted(wallet, PASS, FAST);
+  backup.kdf.hash = 'SHA-512';
+  await assert.rejects(() => importEncrypted(backup, PASS), BadBackupError);
+});
+
+test('importEncrypted maps un-decodable base64 to BadBackupError', async () => {
+  const wallet = await Wallet.generate();
+  const backup = await exportEncrypted(wallet, PASS, FAST);
+  backup.ciphertext = '!!! not base64 !!!';
+  await assert.rejects(() => importEncrypted(backup, PASS), BadBackupError);
+});
+
 import { exportPlain, importPlain } from './gc-backup.mjs';
 
 test('exportPlain equals the wallet b58 private key', async () => {
