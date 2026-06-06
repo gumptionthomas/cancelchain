@@ -43,6 +43,7 @@ block_transactions = db.Table(
         db.ForeignKey('transaction.id'),
         primary_key=True,
     ),
+    db.Index('ix_block_transaction_transaction_id', 'transaction_id'),
 )
 
 
@@ -131,6 +132,10 @@ class OutflowDAO(Base):
     __table_args__ = (
         db.UniqueConstraint('txid', 'idx'),
         db.Index('ix_outflow_txid_idx', 'txid', 'idx'),
+        db.Index('ix_outflow_transaction_id', 'transaction_id'),
+        db.Index('ix_outflow_address', 'address'),
+        db.Index('ix_outflow_opposition', 'opposition'),
+        db.Index('ix_outflow_support', 'support'),
     )
 
     def __init__(
@@ -183,6 +188,13 @@ class InflowDAO(Base):
     __table_args__ = (
         db.UniqueConstraint('txid', 'idx'),
         db.Index('ix_inflow_txid_idx', 'txid', 'idx'),
+        # The next two index the SAME inflow->parent-outflow relationship via
+        # two different column sets: (outflow_txid, outflow_idx) and outflow_id.
+        # Both are kept deliberately because different queries filter on
+        # different columns — do not "consolidate" them or a query plan breaks.
+        db.Index('ix_inflow_outflow_txid_idx', 'outflow_txid', 'outflow_idx'),
+        db.Index('ix_inflow_outflow_id', 'outflow_id'),
+        db.Index('ix_inflow_transaction_id', 'transaction_id'),
     )
 
     def __init__(
