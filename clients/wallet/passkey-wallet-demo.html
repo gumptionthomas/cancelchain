@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>GumptionChain Passkey Wallet Demo</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        max-width: 42rem;
+        margin: 2rem auto;
+        padding: 0 1rem;
+        line-height: 1.5;
+      }
+      button {
+        font-size: 1rem;
+        padding: 0.5rem 1rem;
+        margin: 0.25rem 0.5rem 0.25rem 0;
+        cursor: pointer;
+      }
+      pre {
+        background: #f4f4f4;
+        padding: 0.75rem;
+        border-radius: 4px;
+        white-space: pre-wrap;
+        word-break: break-all;
+      }
+      .hint {
+        color: #555;
+        font-size: 0.9rem;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>GumptionChain Passkey Wallet Demo</h1>
+    <p class="hint">
+      Real WebAuthn-PRF + IndexedDB adapters. Must be served over a secure
+      context (<code>https://</code> or <code>http://localhost</code>) in a
+      PRF-capable browser.
+    </p>
+
+    <p>
+      <button id="enroll">Enroll</button>
+      <button id="unlock">Unlock &amp; sign</button>
+      <button id="clear">Clear</button>
+    </p>
+
+    <h2>Output</h2>
+    <pre id="out">(idle)</pre>
+
+    <p class="hint">
+      Inspect the stored record in devtools &rarr; Application &rarr; IndexedDB
+      &rarr; <code>gc-wallet</code>. It should hold only
+      <code>{version, address, credentialId, iv, ciphertext}</code> — no
+      plaintext key.
+    </p>
+
+    <script type="module">
+      import { Wallet } from './gc-wallet.mjs';
+      import { enroll, unlock, clear } from './gc-store.mjs';
+      import { makeWebauthnPasskey } from './gc-passkey-webauthn.mjs';
+      import { makeIdbStore } from './gc-store-idb.mjs';
+
+      const rpId = location.hostname;
+      const rpName = 'GumptionChain Wallet Demo';
+      const userName = 'demo@gumptionchain';
+
+      const passkey = makeWebauthnPasskey({ rpId, rpName });
+      const store = makeIdbStore({ dbName: 'gc-wallet' });
+
+      const out = document.getElementById('out');
+      const show = (msg) => {
+        out.textContent = msg;
+      };
+      const fail = (label, err) => {
+        console.error(label, err);
+        show(`${label} failed:\n${err && err.message ? err.message : err}`);
+      };
+
+      document.getElementById('enroll').addEventListener('click', async () => {
+        try {
+          show('Enrolling — complete the passkey ceremony…');
+          const wallet = await Wallet.generate();
+          const address = await enroll(wallet, { passkey, store }, { userName });
+          show(`Enrolled.\naddress: ${address}`);
+        } catch (err) {
+          fail('Enroll', err);
+        }
+      });
+
+      document.getElementById('unlock').addEventListener('click', async () => {
+        try {
+          show('Unlocking — complete the passkey ceremony…');
+          const wallet = await unlock({ passkey, store });
+          const address = await wallet.address();
+          const msg = new TextEncoder().encode('hello gumptionchain');
+          const sig = await wallet.sign(msg);
+          show(
+            `Unlocked & signed.\naddress: ${address}\n` +
+              `message: "hello gumptionchain"\nsignature (b64): ${sig}`,
+          );
+        } catch (err) {
+          fail('Unlock', err);
+        }
+      });
+
+      document.getElementById('clear').addEventListener('click', async () => {
+        try {
+          await clear(store);
+          show('Cleared. The stored record has been removed.');
+        } catch (err) {
+          fail('Clear', err);
+        }
+      });
+    </script>
+  </body>
+</html>
