@@ -28,6 +28,7 @@ from gumptionchain.exceptions import (
     SpentTransactionError,
 )
 from gumptionchain.milling import mill_hash_str
+from gumptionchain.models import TransactionDAO
 from gumptionchain.payload import Inflow, Outflow
 from gumptionchain.transaction import CoinbaseMetrics, Transaction
 from gumptionchain.util import now, now_iso
@@ -1508,3 +1509,43 @@ def test_forged_gross_coinbase_opposition_rejected(
 
         with pytest.raises(InvalidBlockError):
             chain.add_block(block3)
+
+
+def test_outflow_from_dao_matches_transaction_roundtrip(
+    app, add_chain_block, time_stepper, wallet, subject
+):
+    with app.app_context():
+        time_step = time_stepper(
+            start=datetime.datetime.now(datetime.UTC)
+            - datetime.timedelta(hours=1)
+        )
+        _ = next(time_step)
+        chain, block1 = add_chain_block(milling_wallet=wallet)
+        cb = block1.coinbase
+        cb_amount = next(iter(cb.outflows)).amount
+        _ = next(time_step)
+        spend = Transaction()
+        spend.add_inflow(Inflow(outflow_txid=cb.txid, outflow_idx=0))
+        spend.add_outflow(Outflow(amount=cb_amount, opposition=subject))
+        spend.set_wallet(wallet)
+        spend.seal()
+        spend.sign()
+        spend.to_db()
+        block2 = Block()
+        block2.add_txn(spend)
+        _ = next(time_step)
+        add_chain_block(chain=chain, block=block2, milling_wallet=wallet)
+
+        txn_dao = TransactionDAO.get(spend.txid)
+        assert txn_dao is not None
+        outflow_dao = next(
+            o for o in txn_dao.outflows if o.opposition == subject
+        )
+
+        direct = Outflow.from_dao(outflow_dao)
+        roundtrip = Transaction.from_dao(outflow_dao.transaction).get_outflow(
+            index=outflow_dao.idx
+        )
+        assert direct == roundtrip
+        assert direct.opposition == subject
+        assert direct.amount == cb_amount
