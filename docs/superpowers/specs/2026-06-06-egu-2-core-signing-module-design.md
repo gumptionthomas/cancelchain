@@ -36,9 +36,9 @@ storage/UX layers can be built against a trusted core.
 | Public key bytes | DER **SubjectPublicKeyInfo** | `subtle.exportKey('spki', pub)` |
 | Public key b64 | base64(SPKI DER) | base64 of the SPKI export |
 | Private key bytes | DER **PKCS8** (unencrypted) | `subtle.importKey('pkcs8', …)` / `exportKey('pkcs8')` |
-| Private key b58 | base58check(PKCS8 DER) | base58check of the PKCS8 bytes |
+| Private key b58 | base58(PKCS8 DER) (plain, no checksum) | plain base58 of the PKCS8 bytes |
 | `millHash` | `sha256(sha512(data)).digest()` | `subtle.digest('SHA-256', await subtle.digest('SHA-512', data))` |
-| Address | `'GC' + base58check(millHash(spki)) + 'GC'` | same, with pure-JS base58check |
+| Address | `'GC' + base58(millHash(spki)) + 'GC'` (plain base58) | same, with pure-JS plain base58 |
 | Canonical | `\n`-join: `gc-sig-v1`, METHOD, path, query, `sha256(body).hexdigest()`, node_host, timestamp, address (UTF-8) | same |
 | Headers | `GC-Sig-Version=1`, `GC-Address`, `GC-Public-Key`(b64 SPKI), `GC-Timestamp`, `GC-Signature`(b64 sig over canonical) | same |
 
@@ -46,18 +46,22 @@ storage/UX layers can be built against a trusted core.
 canonical yields **identical** signature bytes in Python and JS. This makes
 golden-vector parity exact, not approximate.
 
-**The one delicate primitive — base58check.** The JS implementation must
-byte-match the Python `base58check>=1.0.2` package: base58-encode
-`payload + sha256(sha256(payload))[:4]` using the Bitcoin alphabet
-(`123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz`), preserving
-leading-zero bytes as leading `1`s. The golden vectors and the live cross-verify
-are what prove this is exact; if a mismatch appears, base58check is the first
-suspect.
+**The one delicate primitive — base58 (NOT base58check).** Empirically verified:
+the Python `base58check>=1.0.2` package's `b58encode`/`b58decode` are **plain
+base58 with no checksum**, despite the package name — `b58encode(b'\x00') == '1'`
+(a 4-byte checksum would lengthen it) and the 32-byte address hash encodes to 42
+chars, not the ~48 a checksum would add. So the JS must implement **plain
+base58**: the Bitcoin alphabet
+(`123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz`), big-endian
+base-256→base-58 conversion, preserving each leading `0x00` byte as a leading
+`1`. **Do not add a double-sha256 checksum** — that would break parity. The
+golden vectors and live cross-verify prove the byte-match; if a mismatch appears,
+base58 is the first suspect.
 
 ## Components (small, single-responsibility files under `clients/wallet/`)
 
 - **`gc-crypto.mjs`** — primitives, no protocol knowledge: `base64encode/decode`,
-  `base58checkEncode/Decode`, `millHash(bytes) -> Uint8Array` (sha256∘sha512),
+  `base58encode/decode` (plain base58, no checksum), `millHash(bytes) -> Uint8Array` (sha256∘sha512),
   `sha256Hex(bytes)`.
 - **`gc-wallet.mjs`** — the `Wallet`-equivalent: `generate()` (RSA-2048 keypair),
   `fromPrivateKeyB58(b58)` / `exportPrivateKeyB58()`, `publicKeyB64()`,
