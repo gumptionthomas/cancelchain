@@ -67,6 +67,14 @@ def test_max_age_enforces_freshness() -> None:
     assert verify_message(proof, max_age=5000, now=now)['valid'] is True
 
 
+def test_max_age_rejects_future_timestamp() -> None:
+    future = int(TS) + 10000
+    proof = sign_message(_wallet(), 'hi', timestamp=future)
+    r = verify_message(proof, max_age=300, now=int(TS))
+    assert r['valid'] is False
+    assert r['reason'] == 'expired'
+
+
 def test_non_base64_signature_is_bad_signature() -> None:
     proof = sign_message(_wallet(), 'hi', timestamp=int(TS))
     proof['signature'] = '!!! not base64 !!!'

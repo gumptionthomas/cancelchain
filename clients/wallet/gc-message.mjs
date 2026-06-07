@@ -77,7 +77,10 @@ export async function verifyMessage(proof, { maxAge, now } = {}) {
   }
   if (maxAge !== undefined) {
     const current = now ?? Math.floor(Date.now() / 1000);
-    if (current - Number(timestamp) > maxAge) {
+    // Symmetric window: reject stale AND future timestamps (mirrors the
+    // server-side gc-sig-v1 freshness check) so maxAge can't be defeated by a
+    // far-future signed timestamp.
+    if (Math.abs(current - Number(timestamp)) > maxAge) {
       return { ...result, valid: false, reason: 'expired' };
     }
   }

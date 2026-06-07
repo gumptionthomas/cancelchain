@@ -58,6 +58,15 @@ test('maxAge enforces freshness when supplied', async () => {
   assert.equal(fresh.valid, true);
 });
 
+test('maxAge rejects a far-future timestamp (symmetric window)', async () => {
+  const w = await Wallet.generate();
+  const future = String(Number(TS) + 10000);
+  const proof = await signMessage(w, 'hi', { timestamp: future });
+  const r = await verifyMessage(proof, { maxAge: 300, now: Number(TS) });
+  assert.equal(r.valid, false);
+  assert.equal(r.reason, 'expired');
+});
+
 test('a non-base64 signature yields bad-signature, not an exception', async () => {
   const w = await Wallet.generate();
   const proof = await signMessage(w, 'hi', { timestamp: TS });

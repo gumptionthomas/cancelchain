@@ -1,11 +1,11 @@
 from __future__ import annotations
 
+import base64
 import binascii
 import hashlib
 import json
 import re
 import time
-from base64 import standard_b64decode, standard_b64encode
 from typing import Any
 
 from gumptionchain.exceptions import InvalidKeyError
@@ -99,7 +99,9 @@ def verify_message(
         return {**result, 'valid': False, 'reason': 'bad-signature'}
     if max_age is not None:
         current = int(now if now is not None else time.time())
-        if current - int(ts) > max_age:
+        # Symmetric window: reject stale AND future timestamps (mirrors
+        # signing.verify) so max_age can't be defeated by a far-future stamp.
+        if abs(current - int(ts)) > max_age:
             return {**result, 'valid': False, 'reason': 'expired'}
     return {**result, 'valid': True}
 
@@ -110,7 +112,7 @@ ARMOR_FOOTER = '-----END GUMPTION SIGNED MESSAGE-----'
 
 
 def to_armored(proof: dict[str, str]) -> str:
-    blob = standard_b64encode(json.dumps(proof).encode()).decode()
+    blob = base64.standard_b64encode(json.dumps(proof).encode()).decode()
     return '\n'.join(
         [ARMOR_HEADER, proof['message'], ARMOR_SIG, blob, ARMOR_FOOTER]
     )
@@ -131,7 +133,10 @@ def from_armored(text: str) -> dict[str, Any]:
     cleartext = '\n'.join(lines[h + 1 : s])
     blob = ''.join(lines[s + 1 : f]).strip()
     try:
-        proof = json.loads(standard_b64decode(blob.encode()).decode())
+        # validate=True rejects non-canonical base64 (non-alphabet chars),
+        # keeping parsing strictness aligned with JS atob in fromArmored.
+        decoded = base64.b64decode(blob.encode(), validate=True)
+        proof = json.loads(decoded.decode())
     except (ValueError, binascii.Error) as e:
         msg = 'malformed armored signature block'
         raise BadProofError(msg) from e
