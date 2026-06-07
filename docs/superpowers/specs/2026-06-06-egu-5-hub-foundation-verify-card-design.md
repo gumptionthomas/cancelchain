@@ -110,8 +110,22 @@ cross-framework translation.
   panel, built in this same language.
 
 A `gumption-hub`-owned stylesheet carries the ported base layer plus the
-hub-specific pieces; the bundled Righteous/Inter TTFs are used by the OG image
-renderer.
+hub-specific pieces; the bundled Righteous/Inter font files are used by the OG
+image renderer (via fontconfig).
+
+## Vendoring the wallet module
+
+`/verify` and `/proof/<hash>` run `verifyStake` in the browser, which needs the
+runtime wallet ESM (`gc-attestation.mjs`, `gc-message.mjs`, `gc-errors.mjs`,
+`gc-wallet.mjs`, `gc-crypto.mjs`, `gc-sig.mjs`, `index.mjs`). These live under
+`gumptionchain/clients/wallet/`, which is **not** part of the importable
+`gumptionchain` wheel — so the hub cannot import them from the package. The hub
+**vendors** the runtime `.mjs` (excluding `*.test.mjs` and `*-cli.mjs`) into
+`gumption-hub`'s static dir via a small **sync script** (copies from the
+`../gumptionchain` checkout), with a test asserting the expected files are present.
+Parity is already locked by gumptionchain's own suite; the hub only serves the
+files. (A future cleanup could ship the wallet as package data or its own package;
+out of scope here.)
 
 ## Routes & information architecture (integrated, flat)
 
@@ -125,6 +139,7 @@ project" framing lives in the nav + landing narrative, **not** in a URL prefix.
 | `/verify` | paste & check any proof | ✅ |
 | `/proof/<hash>` | shareable verified card + OG unfurl | ✅ |
 | `POST /proof` | submit a proof; returns `/proof/<hash>` | ✅ |
+| `GET /tx/<txid>/provenance.json` | **public** provenance read (client `fetchProvenance`) | ✅ |
 | `/explorer`, `/block/<hash>`, `/tx/<txid>`, `/chains` | chain explorer UI | ⬜ #5c |
 | `/subject/<s>`, `/leaderboard`, `/gumption/<addr>` | canonical chain UI | ⬜ #5c |
 | `/api/*` | node peer protocol | inherited, **untouched** |
@@ -187,12 +202,22 @@ same verdict/checks UI. Optional "save & share" → `POST /proof` to mint a
    summary_large_image`). `og:image` = `/proof/<hash>/og.png`.
 5. **Visit** — a human GETs `/proof/<hash>`; the page renders the card and loads
    the wallet ESM, which runs
-   `verifyStake(proof, { fetchProvenance: txid => GET /api/transaction/<txid> })`
-   against the hub's own node → the three checks resolve live.
+   `verifyStake(proof, { fetchProvenance: txid => GET /tx/<txid>/provenance.json })`
+   → the three checks resolve live.
 
 The verify **engine** is unchanged from #176b; the hub provides the *transport
-adapter* (`fetchProvenance` → same-origin `/api/transaction/<txid>`, mapping 404 →
-`null`, leaving genuine transport errors to propagate) and the *UI*.
+adapter* (`fetchProvenance` → same-origin `/tx/<txid>/provenance.json`, mapping
+404 → `null`, leaving genuine transport errors to propagate) and the *UI*.
+
+**Why a hub public provenance endpoint, not `/api/transaction/<txid>`:** the
+node's `/api/transaction/<txid>` is `authorize_reader` (gc-sig-authenticated), so a
+wallet-less public visitor cannot call it. The hub — which *is* the node, in the
+same process — exposes an **unauthenticated** `GET /tx/<txid>/provenance.json` that
+performs the identical lookup in-process (`node_lc_dao()` →
+`lc.transaction_provenance(txid)`, falling back to
+`ChainDAO.pending_provenance(txid)`) and returns the same JSON. This is the public
+read surface the hub legitimately owns (the explorer in #5c uses it too); the
+permissioned `/api/*` peer protocol is untouched.
 
 ## Storage model
 
@@ -219,9 +244,17 @@ stored_proof(
 
 ## OG image generation
 
-Server-rendered PNG at **1200×630**, the ledger card rendered with **Pillow** —
-porting the technique from acquire-llm's `og_generic_png` (bundled Righteous/Inter
-TTFs, gold-dossier styling). To stay genuinely immutable, the OG image renders
+Server-rendered PNG at **1200×630**, produced the way acquire-llm does it
+(`src/acquire_llm/og.py`): a **Jinja SVG template** (`og/proof.svg.jinja`,
+the ledger card in vector form) → rasterized to PNG via **`cairosvg`**
+(`cairosvg.svg2png(bytestring=svg, output_width=1200, output_height=630)`). Fonts
+(Righteous + Inter) resolve by family name through **fontconfig** — cairosvg/Pango
+ignore inline `@font-face`, so the deploy image installs the vendored font files
+into the system font path and runs `fc-cache` (mirroring acquire-llm's Dockerfile).
+`cairosvg` is a new hub dependency (it is *not* a gumptionchain dependency). The
+PNG is **lazy-generated and cached to disk** (atomic temp-write-then-rename, as in
+`render_recap_png`) and, because it is keyed by the immutable content hash, never
+needs regeneration. To stay genuinely immutable, the OG image renders
 **only immutable facts** — the claim (kind · amount · subject), the signer, the
 txid, the block height, and the "Verified on GumptionChain" mark — and **omits the
 live confirmation count** (which grows over time). It is therefore a pure function
@@ -291,6 +324,15 @@ points at `/proof/<hash>/og.png`.
   share links + provenance is an EGU-wide concern.
 - **Landing/about minimal this round** — the headline is the verify card; the EGU
   shell is fleshed out later.
+- **OG via SVG-Jinja → cairosvg** (not Pillow) — matches acquire-llm's actual
+  technique (`og.py`); vector card B is easy to author and rasterize; fonts via
+  fontconfig.
+- **Public in-process provenance endpoint** — `/api/transaction/<txid>` is
+  gc-sig-authed; the hub serves a wallet-less public read for the verifier and the
+  future explorer, leaving the peer protocol untouched.
+- **Vendor the wallet ESM** — `clients/wallet/*.mjs` aren't in the gumptionchain
+  wheel; the hub syncs the runtime modules into its static dir (sync script + a
+  presence test).
 
 ## Definition of done
 
@@ -300,8 +342,9 @@ points at `/proof/<hash>/og.png`.
   shell (`/`, `/about`) + footer/nav.
 - The verify experience works end-to-end: `POST /proof` (store +
   content-address + dedup + 400 on bad input), `GET /proof/<hash>` (OG meta + live
-  `verifyStake` against the hub's own node), `GET /proof/<hash>/og.png` (1200×630
-  Pillow card), `GET /verify` (paste & check). 404 for unknown proofs.
+  `verifyStake`), `GET /tx/<txid>/provenance.json` (public in-process provenance
+  read), `GET /proof/<hash>/og.png` (1200×630 SVG→PNG via cairosvg), `GET /verify`
+  (paste & check). 404 for unknown proofs.
 - Tests (Python + JS glue) pass; ruff/mypy clean; zero npm.
 - `MANUAL-VERIFICATION.md` + the wallet demo updated for the full share flow.
 - No change to gumptionchain consensus, schema, or `/api/*` peer protocol. Part of
