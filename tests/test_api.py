@@ -9,6 +9,7 @@ from gumptionchain.api_client import ApiClient
 from gumptionchain.block import Block
 from gumptionchain.exceptions import InvalidRoleConfigError
 from gumptionchain.miller import Miller
+from gumptionchain.milling import mill_hash_str
 from gumptionchain.tasks import post_process
 from gumptionchain.transaction import Transaction
 from gumptionchain.util import host_address, now
@@ -551,3 +552,69 @@ def test_rescind_invalid_kind_returns_validation_error(
                     'kind': 'invalid',
                 },
             )
+
+
+def test_transaction_provenance_endpoint_canonical(
+    app, host, mill_block, requests_proxy, subject, wallet
+):
+    with app.app_context():
+        m, _b1 = mill_block(wallet)
+        txn = m.longest_chain.create_opposition(wallet, 300, subject)
+        txn.sign()
+        ApiClient(host, wallet).post_transaction(txn)
+        m, b2 = mill_block(wallet)
+
+        resp = ApiClient(host, wallet).get(f'/api/transaction/{txn.txid}')
+        assert resp.status_code == httpx.codes.OK
+        body = resp.json()
+        assert body['txid'] == txn.txid
+        assert body['address'] == wallet.address
+        assert body['status'] == 'canonical'
+        assert body['confirmations'] == 1
+        assert body['block_hash'] == b2.block_hash
+        assert body['as_of_block'] == b2.block_hash
+        assert {
+            'kind': 'opposition',
+            'subject': subject,
+            'amount': 300,
+        } in body['outflows']
+
+
+def test_transaction_provenance_endpoint_pending(
+    app, host, mill_block, requests_proxy, subject, wallet
+):
+    with app.app_context():
+        m, _b1 = mill_block(wallet)
+        txn = m.longest_chain.create_opposition(wallet, 5, subject)
+        txn.sign()
+        ApiClient(host, wallet).post_transaction(txn)
+
+        resp = ApiClient(host, wallet).get(f'/api/transaction/{txn.txid}')
+        assert resp.status_code == httpx.codes.OK
+        assert resp.json()['status'] == 'pending'
+
+
+def test_transaction_provenance_endpoint_unknown_404(
+    app, host, mill_block, requests_proxy, wallet
+):
+    with app.app_context():
+        mill_block(wallet)
+        absent = mill_hash_str('absent-txn')
+        with pytest.raises(httpx.HTTPStatusError, match='404'):
+            ApiClient(host, wallet).get(f'/api/transaction/{absent}')
+
+
+def test_transaction_provenance_endpoint_requires_auth(
+    app, host, mill_block, requests_proxy, subject, wallet
+):
+    with app.app_context():
+        m, _b1 = mill_block(wallet)
+        txn = m.longest_chain.create_opposition(wallet, 1, subject)
+        txn.sign()
+        ApiClient(host, wallet).post_transaction(txn)
+        mill_block(wallet)
+        # unsigned request -> 401
+        resp = requests_proxy.get(
+            f'/api/transaction/{txn.txid}', timeout=TIMEOUT
+        )
+        assert resp.status_code == httpx.codes.UNAUTHORIZED
