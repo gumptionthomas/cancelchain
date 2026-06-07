@@ -3,7 +3,9 @@ from test_browser_wallet_vectors import VECTOR_WALLET_B58
 
 from gumptionchain.message import (
     BadProofError,
+    from_armored,
     sign_message,
+    to_armored,
     verify_message,
 )
 from gumptionchain.signing import _canonical
@@ -79,3 +81,22 @@ def test_domain_separation_from_gc_sig() -> None:
         address=w.address,
     )
     assert not w.validate_signature(sig_canonical, proof['signature'])
+
+
+def test_armored_round_trip() -> None:
+    w = _wallet()
+    proof = sign_message(w, 'multi\nline\nmessage', timestamp=int(TS))
+    armored = to_armored(proof)
+    assert armored.startswith('-----BEGIN GUMPTION SIGNED MESSAGE-----')
+    back = from_armored(armored)
+    assert back == proof
+    assert verify_message(back)['valid'] is True
+
+
+def test_from_armored_rejects_malformed_and_mismatch() -> None:
+    proof = sign_message(_wallet(), 'hello', timestamp=int(TS))
+    with pytest.raises(BadProofError):
+        from_armored('not armored at all')
+    tampered = to_armored(proof).replace('hello', 'goodbye')
+    with pytest.raises(BadProofError):
+        from_armored(tampered)

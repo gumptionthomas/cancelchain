@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import binascii
 import hashlib
+import json
 import time
+from base64 import standard_b64decode, standard_b64encode
 from typing import Any
 
 from gumptionchain.exceptions import InvalidKeyError
@@ -93,3 +96,44 @@ def verify_message(
         if current - int(ts) > max_age:
             return {**result, 'valid': False, 'reason': 'expired'}
     return {**result, 'valid': True}
+
+
+ARMOR_HEADER = '-----BEGIN GUMPTION SIGNED MESSAGE-----'
+ARMOR_SIG = '-----BEGIN GUMPTION SIGNATURE-----'
+ARMOR_FOOTER = '-----END GUMPTION SIGNED MESSAGE-----'
+
+
+def to_armored(proof: dict[str, str]) -> str:
+    blob = standard_b64encode(json.dumps(proof).encode()).decode()
+    return '\n'.join(
+        [ARMOR_HEADER, proof['message'], ARMOR_SIG, blob, ARMOR_FOOTER]
+    )
+
+
+def from_armored(text: str) -> dict[str, Any]:
+    lines = text.replace('\r\n', '\n').split('\n')
+    try:
+        h = lines.index(ARMOR_HEADER)
+        s = lines.index(ARMOR_SIG)
+        f = lines.index(ARMOR_FOOTER)
+    except ValueError as e:
+        msg = 'malformed armored message'
+        raise BadProofError(msg) from e
+    if not h < s < f:
+        msg = 'malformed armored message'
+        raise BadProofError(msg)
+    cleartext = '\n'.join(lines[h + 1 : s])
+    blob = ''.join(lines[s + 1 : f]).strip()
+    try:
+        proof = json.loads(standard_b64decode(blob.encode()).decode())
+    except (ValueError, binascii.Error) as e:
+        msg = 'malformed armored signature block'
+        raise BadProofError(msg) from e
+    if not isinstance(proof, dict):
+        msg = 'malformed armored signature block'
+        raise BadProofError(msg)
+    proof_dict: dict[str, Any] = proof
+    if proof_dict.get('message') != cleartext:
+        msg = 'armored cleartext does not match signed message'
+        raise BadProofError(msg)
+    return proof_dict
