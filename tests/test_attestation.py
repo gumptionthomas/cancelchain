@@ -127,3 +127,22 @@ def test_verify_stake_failure_reasons() -> None:
 def test_parse_rejects_non_claim() -> None:
     with pytest.raises(BadAttestationError):
         parse_stake_attestation({'message': 'not json'})
+
+
+def test_parse_rejects_non_canonical() -> None:
+    # float amount (json.loads -> 300.0): non-int / non-canonical
+    with pytest.raises(BadAttestationError):
+        parse_stake_attestation(
+            {
+                'message': '{"txid":"tx1","kind":"opposition",'
+                '"subject":"goblins","amount":300.0}'
+            }
+        )
+    # reordered keys -> non-canonical encoding
+    with pytest.raises(BadAttestationError):
+        parse_stake_attestation(
+            {
+                'message': '{"kind":"opposition","txid":"tx1",'
+                '"subject":"goblins","amount":300}'
+            }
+        )

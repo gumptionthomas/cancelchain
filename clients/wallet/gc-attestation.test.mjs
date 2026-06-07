@@ -59,6 +59,19 @@ test('parseStakeAttestation throws on a non-claim message', () => {
   );
 });
 
+test('parseStakeAttestation rejects non-canonical encodings', () => {
+  // float amount (JSON.parse coerces 300.0 -> 300; rebuild differs)
+  assert.throws(() => parseStakeAttestation({
+    message:
+      '{"txid":"tx1","kind":"opposition","subject":"goblins","amount":300.0}',
+  }), BadAttestationError);
+  // reordered keys
+  assert.throws(() => parseStakeAttestation({
+    message:
+      '{"kind":"opposition","txid":"tx1","subject":"goblins","amount":300}',
+  }), BadAttestationError);
+});
+
 test('verifyStake valid when signature + onchain + consistent all hold', async () => {
   const w = await Wallet.generate();
   const proof = await signStakeAttestation(w, CLAIM, { timestamp: TS });

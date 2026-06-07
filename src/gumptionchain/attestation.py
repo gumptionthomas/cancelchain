@@ -85,6 +85,13 @@ def parse_stake_attestation(proof: Any) -> dict[str, Any]:
         msg = 'message is not a stake claim'
         raise BadAttestationError(msg) from e
     _validate_claim(claim)
+    # Require canonical encoding: the signed message must be exactly what
+    # build_stake_message emits for this claim. Rejects non-canonical forms
+    # (a float amount like 300.0, reordered keys, extra fields, whitespace)
+    # so JS and Python agree on accept/reject for any signable input.
+    if build_stake_message(claim) != proof['message']:
+        msg = 'non-canonical stake claim encoding'
+        raise BadAttestationError(msg)
     return claim  # type: ignore[no-any-return]
 
 
@@ -122,7 +129,7 @@ def verify_stake(
         )
 
     provenance = fetch_provenance(claim['txid'])
-    if not provenance:
+    if provenance is None:
         reasons.append('txn-not-found')
     elif provenance.get('status') != 'canonical':
         reasons.append('not-canonical')

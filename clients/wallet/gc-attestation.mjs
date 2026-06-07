@@ -73,6 +73,13 @@ export function parseStakeAttestation(proof) {
     throw new BadAttestationError('message is not a stake claim');
   }
   validateClaim(claim);
+  // Require canonical encoding: the signed message must be exactly what
+  // buildStakeMessage emits for this claim. Rejects non-canonical forms (a
+  // float amount like 300.0, reordered keys, extra fields, whitespace) so JS
+  // and Python agree on accept/reject for any signable input.
+  if (buildStakeMessage(claim) !== proof.message) {
+    throw new BadAttestationError('non-canonical stake claim encoding');
+  }
   return claim;
 }
 
