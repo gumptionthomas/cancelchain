@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import json
 from collections.abc import Callable, Mapping
 from datetime import datetime
@@ -37,6 +38,7 @@ from gumptionchain.exceptions import (
     MempoolFullError,
     MissingBlockError,
 )
+from gumptionchain.models import ChainDAO
 from gumptionchain.node import Node
 from gumptionchain.payload import (
     StakeKind,
@@ -420,6 +422,44 @@ blueprint.add_url_rule(
     '/transaction/<mill_hash:txid>/<process>',
     view_func=transactor_txn_view,
     methods=['POST'],
+)
+
+
+class TransactionProvenanceView(MethodView):
+    def get(self, txid: str, **kwargs: Any) -> Response:
+        try:
+            _, lc, _ = node_lc_dao()
+            tip = lc.block_hash if lc is not None else None
+            key = f'{tip}.{txid}.txn-provenance'
+            if (prov := cache.get(key)) is None:
+                prov = (
+                    lc.transaction_provenance(txid)
+                    if lc is not None
+                    else ChainDAO.pending_provenance(txid)
+                )
+                if prov is not None:
+                    cache.set(key, prov)
+            if prov is None:
+                return make_json_response(
+                    {'error': 'transaction not found'}, 404
+                )
+            # deepcopy: prov is the cached object; its nested `outflows` list
+            # would otherwise be shared by reference with the cache entry.
+            return make_json_response(
+                {'txid': txid, **copy.deepcopy(prov), 'as_of_block': tip}
+            )
+        except GCError as err:
+            return make_error_response(err)
+        except Exception as e:
+            exception_response(e)
+
+
+blueprint.add_url_rule(
+    '/transaction/<mill_hash:txid>',
+    view_func=authorize_reader(
+        TransactionProvenanceView.as_view('transaction_provenance_reader')
+    ),
+    methods=['GET'],
 )
 
 
