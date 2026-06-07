@@ -29,9 +29,10 @@ This is a barrel-style ESM package; import from `index.mjs`.
 // Relative path (vendored / monorepo)
 import { Wallet, signMessage } from './clients/wallet/index.mjs';
 
-// Or pin a tag/commit via a CDN that serves the repo (no install):
+// Or pin a tag/commit via a CDN that serves the repo (no install). Include an
+// @<tag-or-sha> segment so you track a fixed version, not the default branch:
 // import { Wallet } from
-//   'https://cdn.jsdelivr.net/gh/gumptionthomas/gumptionchain/clients/wallet/index.mjs';
+//   'https://cdn.jsdelivr.net/gh/gumptionthomas/gumptionchain@<tag-or-sha>/clients/wallet/index.mjs';
 ```
 
 Only symbols re-exported from `index.mjs` are the supported public API. Other
@@ -143,7 +144,10 @@ the gumption.com hub (EGU #5):
 2. The only cross-repo coupling is the **JS↔Python parity tests** and the
    `sign-cli.mjs` / `message-cli.mjs` harnesses they invoke. Keep those here
    (pointing at a vendored/submoduled copy) or re-home them with the node.
-3. Serve over `https://`, or pin a tag via jsDelivr
-   (`https://cdn.jsdelivr.net/gh/<owner>/<repo>@<tag>/index.mjs`).
+3. Serve over `https://`, or pin a tag via jsDelivr. The path segment after
+   `@<tag>` is wherever `index.mjs` lives in the new repo — at the repo root if
+   you extracted `clients/wallet/`'s contents, e.g.
+   `https://cdn.jsdelivr.net/gh/<owner>/<repo>@<tag>/index.mjs` (or
+   `…@<tag>/clients/wallet/index.mjs` if you kept the subdirectory).
 
 No build step is required — the barrel is plain ESM.
