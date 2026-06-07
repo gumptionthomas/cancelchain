@@ -77,3 +77,21 @@ test('fromArmored rejects malformed armor and cleartext mismatch', async () => {
   const tampered = toArmored(proof).replace('hello', 'goodbye');
   assert.throws(() => fromArmored(tampered), BadProofError);
 });
+
+import { readFileSync } from 'node:fs';
+import { Wallet as W2 } from './gc-wallet.mjs';
+
+test('JS signatures match the committed golden vectors', async () => {
+  const VEC = JSON.parse(readFileSync(
+    new URL('./testdata/gc-msg-vectors.json', import.meta.url),
+  ));
+  // VECTOR_WALLET_B58 is the fixed key used by the Python generator.
+  const B58 = process.env.GC_VECTOR_KEY;
+  if (!B58) return; // key supplied by the parity runner; skip if absent
+  const w = await W2.fromPrivateKeyB58(B58);
+  for (const c of VEC) {
+    const proof = await signMessage(w, c.message, { timestamp: c.timestamp });
+    assert.equal(proof.signature, c.signature);
+    assert.equal(proof.address, c.address);
+  }
+});
