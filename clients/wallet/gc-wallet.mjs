@@ -1,7 +1,7 @@
 // GumptionChain browser wallet: keygen, key import/export, address, sign.
 // Pure Web Crypto + vanilla JS. No dependencies. Browser + Node 20+.
 import {
-  base58encode, base58decode, base64encode, millHash,
+  base58encode, base58decode, base64encode, base64decode, millHash,
 } from './gc-crypto.mjs';
 
 const ALG = { name: 'RSASSA-PKCS1-v1_5' };
@@ -74,6 +74,18 @@ export class Wallet {
     return new Wallet(priv, pub);
   }
 
+  static async fromPublicKeyB64(b64) {
+    const pub = await crypto.subtle.importKey(
+      'spki',
+      base64decode(b64),
+      IMPORT_PARAMS,
+      true,
+      ['verify'],
+    );
+    assertKeyProfile(pub);
+    return new Wallet(null, pub);
+  }
+
   async exportPrivateKeyB58() {
     if (!this.#privateKey) {
       throw new Error('no private key');
@@ -103,5 +115,9 @@ export class Wallet {
     }
     const sig = await crypto.subtle.sign(ALG, this.#privateKey, bytes);
     return base64encode(new Uint8Array(sig));
+  }
+
+  async verify(bytes, signatureB64) {
+    return crypto.subtle.verify(ALG, this.#publicKey, base64decode(signatureB64), bytes);
   }
 }

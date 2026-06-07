@@ -67,3 +67,25 @@ test('exportPrivateKeyB58 round-trips through fromPrivateKeyB58', async () => {
   const w = await Wallet.fromPrivateKeyB58(V.private_key_b58);
   assert.equal(await w.exportPrivateKeyB58(), V.private_key_b58);
 });
+
+test('fromPublicKeyB64 yields a verify-only wallet with the same address', async () => {
+  const w = await Wallet.generate();
+  const v = await Wallet.fromPublicKeyB64(await w.publicKeyB64());
+  assert.equal(await v.address(), await w.address());
+});
+
+test('verify-only wallet verifies a good signature and rejects a bad one', async () => {
+  const w = await Wallet.generate();
+  const v = await Wallet.fromPublicKeyB64(await w.publicKeyB64());
+  const bytes = new TextEncoder().encode('hello');
+  const sig = await w.sign(bytes);
+  assert.equal(await v.verify(bytes, sig), true);
+  const other = new TextEncoder().encode('tampered');
+  assert.equal(await v.verify(other, sig), false);
+});
+
+test('verify-only wallet cannot sign or export the private key', async () => {
+  const v = await Wallet.fromPublicKeyB64(await (await Wallet.generate()).publicKeyB64());
+  await assert.rejects(() => v.sign(new Uint8Array([1])));
+  await assert.rejects(() => v.exportPrivateKeyB58());
+});
