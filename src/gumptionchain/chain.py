@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from functools import total_ordering
 from typing import Any, Self, assert_never
 
+from sqlalchemy import Select
 from sqlalchemy.exc import SQLAlchemyError
 
 from gumptionchain.block import Block
@@ -514,6 +515,28 @@ class Chain:
 
     def support_balance(self, subject: str) -> int:
         return int(self.to_dao().support_balance(subject))
+
+    def subject_leaderboard(self, limit: int | None = None) -> Select[Any]:
+        return self.to_dao().subject_leaderboard(limit)
+
+    def recent_blocks(self, count: int = 10) -> list[Block]:
+        q = BlockDAO.longest_chain_blocks_q().limit(count)
+        return [Block.from_dao(b) for b in db.session.scalars(q)]
+
+    @property
+    def transaction_count(self) -> int:
+        q = BlockDAO.longest_chain_transactions_q().subquery()
+        return db.session.scalar(db.select(db.func.count()).select_from(q)) or 0
+
+    @property
+    def subject_count(self) -> int:
+        q = self.subject_leaderboard().subquery()
+        return db.session.scalar(db.select(db.func.count()).select_from(q)) or 0
+
+    @property
+    def total_staked(self) -> int:
+        q = self.subject_leaderboard().subquery()
+        return db.session.scalar(db.select(db.func.sum(q.c.total))) or 0
 
     def transaction_provenance(self, txid: str) -> dict[str, Any] | None:
         dao = self.to_dao()
