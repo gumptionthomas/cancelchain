@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_outflow.html" import outflow_kind, outflow_target %}
 
 {% block content -%}
   <div class="container-fluid">
@@ -86,10 +87,8 @@
           <thead>
             <tr>
               <th class="col-1">Index</th>
-              <th class="col-3">Address</th>
-              <th class="col-2">Opposition</th>
-              <th class="col-2">Rescind</th>
-              <th class="col-2">Support</th>
+              <th class="col-2">Kind</th>
+              <th class="col-7">Target</th>
               <th class="col-2">Amount</th>
             </tr>
           </thead>
@@ -97,10 +96,8 @@
             {%- for o in outflows %}
               <tr>
                 <td class="col-1">{{ loop.index0 }}</td>
-                <td class="col-3">{{ o.address or None }}</td>
-                <td class="col-2">{{ o.opposition }}{% if o.opposition %} <em>({{ o.opposition | human_subject }})</em>{% endif %}</td>
-                <td class="col-2">{{ o.rescind }}{% if o.rescind %} <em>({{ o.rescind | human_subject }})</em>{% endif %}{% if o.rescind_kind %} <em>({{ o.rescind_kind }})</em>{% endif %}</td>
-                <td class="col-2">{{ o.support }}{% if o.support %} <em>({{ o.support | human_subject }})</em>{% endif %}</td>
+                <td class="col-2">{{ outflow_kind(o) }}</td>
+                <td class="col-7">{{ outflow_target(o) }}</td>
                 <td class="col-2">{{ o.amount }}</td>
               </tr>
             {%- endfor %}
@@ -108,10 +105,8 @@
           <tfoot class="font-monospace">
             <tr>
               <td class="col-1"></td>
-              <td class="col-3"></td>
               <td class="col-2"></td>
-              <td class="col-2"></td>
-              <td class="col-2"></td>
+              <td class="col-7"></td>
               <td class="col-2">{{ outflow_total }}</td>
             </tr>
           </tfoot>
