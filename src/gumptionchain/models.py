@@ -1184,6 +1184,20 @@ class PendingTxnDAO(Base):
             yield json_data
 
     @classmethod
+    def pending_q(
+        cls,
+        expired: datetime.datetime | None = None,
+    ) -> Select[tuple[PendingTxnDAO]]:
+        stmt = db.select(cls)
+        if expired is not None:
+            # open-boundary expiry, read-only (no prune): keep
+            # timestamp >= cutoff (mirrors json_datas / txn_is_expired).
+            stmt = stmt.where(cls.timestamp >= expired)
+        return stmt.order_by(  # type: ignore[no-any-return]
+            cls.received.desc(), cls.txid
+        )
+
+    @classmethod
     def delete_expired(cls, cutoff: datetime.datetime) -> int:
         """Delete every pending txn strictly older than `cutoff`
         (timestamp < cutoff) in a single commit, returning the count
