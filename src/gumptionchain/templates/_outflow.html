@@ -1,0 +1,19 @@
+{# Outflow kind/target helpers. An outflow is exactly one of: an address
+   transfer, an opposition stake, a support stake, or a rescind (which carries
+   the kind it rescinds). These surface the kind as a scannable badge and the
+   target (address or human-readable subject). #}
+{% macro outflow_kind(o) -%}
+{%- if o.opposition %}<span class="badge bg-danger">opposition</span>
+{%- elif o.support %}<span class="badge bg-success">support</span>
+{%- elif o.rescind %}<span class="badge bg-warning text-dark">rescind {{ o.rescind_kind }}</span>
+{%- elif o.address %}<span class="badge bg-secondary">transfer</span>
+{%- else %}<span class="text-muted">&mdash;</span>{% endif -%}
+{%- endmacro %}
+
+{% macro outflow_target(o) -%}
+{%- if o.address %}{{ o.address }}
+{%- elif o.opposition %}{{ o.opposition }} <em class="text-muted">({{ o.opposition | human_subject }})</em>
+{%- elif o.support %}{{ o.support }} <em class="text-muted">({{ o.support | human_subject }})</em>
+{%- elif o.rescind %}{{ o.rescind }} <em class="text-muted">({{ o.rescind | human_subject }})</em>
+{%- else %}<span class="text-muted">&mdash;</span>{% endif -%}
+{%- endmacro %}
