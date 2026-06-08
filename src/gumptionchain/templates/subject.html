@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+
+{% block content -%}
+<div class="container-fluid">
+  <div class="row my-3"><div class="col">
+    <h3>{{ subject | human_subject }}</h3>
+  </div></div>
+
+  <div class="row my-3">
+    <div class="col">
+      <div class="card bg-light"><div class="card-body">
+        <div class="card-title h5">Opposition</div>
+        <p class="h4">{{ opposition }} <small class="text-muted">grains</small></p>
+        {%- if opposition_flows %}
+        <table class="table table-hover">
+          <thead><tr><th>Amount</th><th>Transaction</th></tr></thead>
+          <tbody class="font-monospace">
+          {%- for flow in opposition_flows %}
+            <tr>
+              <td>{{ flow.amount }}</td>
+              <td><a class="text-dark" href="{{ url_for('browser.transaction_view', txid=flow.txid) }}">{{ flow.txid }}</a></td>
+            </tr>
+          {%- endfor %}
+          </tbody>
+        </table>
+        {%- else %}
+        <p>none</p>
+        {%- endif %}
+      </div></div>
+    </div>
+
+    <div class="col">
+      <div class="card bg-light"><div class="card-body">
+        <div class="card-title h5">Support</div>
+        <p class="h4">{{ support }} <small class="text-muted">grains</small></p>
+        {%- if support_flows %}
+        <table class="table table-hover">
+          <thead><tr><th>Amount</th><th>Transaction</th></tr></thead>
+          <tbody class="font-monospace">
+          {%- for flow in support_flows %}
+            <tr>
+              <td>{{ flow.amount }}</td>
+              <td><a class="text-dark" href="{{ url_for('browser.transaction_view', txid=flow.txid) }}">{{ flow.txid }}</a></td>
+            </tr>
+          {%- endfor %}
+          </tbody>
+        </table>
+        {%- else %}
+        <p>none</p>
+        {%- endif %}
+      </div></div>
+    </div>
+  </div>
+</div>
+{%- endblock %}
