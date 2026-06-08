@@ -131,6 +131,9 @@ export async function unlock({ store, passkey } = {}, { passphrase } = {}) {
 // supplied passphrase, then wrap the SAME dekRaw under the passkey PRF and
 // merge wraps.passkey. The DEK never changes, so both methods unlock the same
 // wallet. A wrong passphrase rejects before any record mutation (fails closed).
+// NOTE: this REPLACES any existing passkey wrap (mints a fresh credential and
+// discards the old wrap) — the caller/UI should gate on whether a passkey is
+// already enrolled if "add vs replace" matters.
 export async function addPasskey({ store, passkey }, { passphrase }, ids) {
   const rec = loadRecord(await store.get());
   const dekRaw = await unwrapDek(rec, {}, { passphrase });
