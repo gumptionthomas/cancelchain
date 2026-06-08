@@ -83,6 +83,8 @@ def index_view() -> Any:
         subject_count = total_staked = 0
         if lc is not None:
             subject_count, total_staked = lc.stake_stats()
+        # Pending-pool size is independent of the chain (always available).
+        pending_count = PendingTxnDAO.count()
     except HTTPException as e:
         return e
     except Exception as e:
@@ -98,6 +100,7 @@ def index_view() -> Any:
         lc=lc,
         subject_count=subject_count,
         total_staked=total_staked,
+        pending_count=pending_count,
     )
 
 
