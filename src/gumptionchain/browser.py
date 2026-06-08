@@ -17,7 +17,13 @@ def longest_chain() -> Chain | None:
     return Node(logger=current_app.logger).longest_chain
 
 
-blueprint = Blueprint('browser', __name__)
+blueprint = Blueprint(
+    'browser',
+    __name__,
+    template_folder='templates',
+    static_folder='static',
+    static_url_path='/static/gumptionchain',
+)
 
 
 @blueprint.route('/')
