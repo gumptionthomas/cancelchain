@@ -34,3 +34,18 @@ def test_home_shows_stats_and_recent_blocks(
         assert b'/subjects' in body
         # the chain tip hash appears in the recent-blocks table
         assert tip.block_hash.encode() in body
+
+
+def test_home_shows_pending_count(
+    app, host, mill_block, requests_proxy, subject, wallet
+):
+    with app.app_context():
+        m, _b = mill_block(wallet)
+        _stake_opposition(host, m.longest_chain, wallet, 300, subject)
+
+        resp = app.test_client().get('/')
+        assert resp.status_code == 200
+        body = resp.data
+        # a Pending stat card with the pool count (1 pending txn)
+        assert b'Pending' in body
+        assert b'>1<' in body
