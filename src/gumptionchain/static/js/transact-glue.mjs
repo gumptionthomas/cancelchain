@@ -66,10 +66,25 @@ export function submitPath(txid) {
   return `${API_PREFIX}/transaction/${encodeURIComponent(txid)}`;
 }
 
+// Pull a human detail out of an error body. The node returns `{error: msgs}`
+// where `msgs` is a LIST of message strings (GCError.messages), e.g.
+// `['InsufficientFundsError']`, or a dict for pydantic validation errors — not
+// a bare string. Surface all of those, not just the string case (otherwise a
+// real reason like insufficient funds shows as a generic "validation error").
+function errorDetail(body) {
+  const e = body && body.error;
+  if (typeof e === 'string') return e;
+  if (Array.isArray(e)) {
+    return e.filter((x) => typeof x === 'string').join('; ');
+  }
+  if (e && typeof e === 'object') return JSON.stringify(e);
+  return '';
+}
+
 // Map a submit/build response to a single user-facing string. Each documented
 // status is surfaced distinctly (closed node, mempool full, validation).
 export function responseMessage(status, body) {
-  const detail = body && typeof body.error === 'string' ? body.error : '';
+  const detail = errorDetail(body);
   if (status === 200 || status === 201 || status === 202) {
     return 'Transaction submitted and received by the node.';
   }

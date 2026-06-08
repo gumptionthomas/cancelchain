@@ -107,6 +107,18 @@ test('responseMessage 400 surfaces the validation error', () => {
   assert.match(m, /bad amount/);
 });
 
+test('responseMessage 400 surfaces a LIST error detail (GCError.messages)', () => {
+  // The node returns {error: [...]} (a list), e.g. an insufficient-funds build.
+  const m = responseMessage(400, { error: ['InsufficientFundsError'] });
+  assert.match(m, /InsufficientFundsError/);
+  assert.doesNotMatch(m, /^The node rejected the transaction: validation error/);
+});
+
+test('responseMessage 400 surfaces a dict error detail (pydantic)', () => {
+  const m = responseMessage(400, { error: { amount: 'must be >= 1' } });
+  assert.match(m, /amount/);
+});
+
 test('responseMessage falls back for an unmapped status', () => {
   const m = responseMessage(418, {});
   assert.match(m, /418/);
