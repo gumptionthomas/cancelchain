@@ -84,7 +84,10 @@ def index_view() -> Any:
         if lc is not None:
             subject_count, total_staked = lc.stake_stats()
         # Pending-pool size is independent of the chain (always available).
-        pending_count = PendingTxnDAO.count()
+        # Count what /mempool displays: unexpired + unconfirmed (#208).
+        pending_count = PendingTxnDAO.unconfirmed_count(
+            expired=expiry_cutoff(now())
+        )
     except HTTPException as e:
         return e
     except Exception as e:

@@ -1232,6 +1232,17 @@ class PendingTxnDAO(Base):
         )
 
     @classmethod
+    def unconfirmed_count(cls, expired: datetime.datetime | None = None) -> int:
+        # The home-badge count: unexpired + unconfirmed, matching what
+        # /mempool displays via pending_q(exclude_confirmed=True). Same
+        # open-boundary expiry rule as pending_q / json_datas.
+        stmt = db.select(db.func.count()).select_from(cls)
+        if expired is not None:
+            stmt = stmt.where(cls.timestamp >= expired)
+        stmt = stmt.where(cls._unconfirmed_clause())
+        return db.session.scalar(stmt) or 0
+
+    @classmethod
     def _unconfirmed_clause(cls) -> ColumnElement[bool]:
         # True iff this pending txid is NOT in the canonical chain.
         # Correlated NOT EXISTS over the canonical materialization
