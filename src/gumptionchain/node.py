@@ -200,8 +200,19 @@ class Node:
         # canonical filter (exclude_confirmed) keeps the mempool views
         # correct regardless, so this is a resource trade-off, not a
         # display or consensus bug.
-        for txn in block.regular_txns:
-            self.pending_txns.discard(txn)
+        #
+        # Fail-soft: a transient DB error during the prune must never
+        # block acceptance or gossip of an already-committed block; the
+        # read-time canonical filter is the correctness backstop.
+        try:
+            for txn in block.regular_txns:
+                self.pending_txns.discard(txn)
+        except SQLAlchemyError as e:
+            # Best-effort: a failed prune must never block acceptance or
+            # gossip of an already-committed block; the read-time
+            # canonical filter keeps the mempool views correct.
+            rollback_session()
+            self.logger.warning(e)
 
     def add_block(self, block: Block, *, commit: bool = True) -> Block | None:
         try:
