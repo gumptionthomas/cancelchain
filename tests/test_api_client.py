@@ -3,6 +3,7 @@ import pytest
 
 from gumptionchain import signing
 from gumptionchain.api_client import ApiClient
+from gumptionchain.block import Block
 from gumptionchain.wallet import Wallet
 
 
@@ -48,6 +49,22 @@ def test_get_attaches_signature_headers(
         assert sent['headers'][signing.H_VERSION] == signing.SIG_VERSION
         assert sent['headers'][signing.H_ADDRESS] == wallet.address
         assert signing.H_SIGNATURE in sent['headers']
+
+
+def test_get_blocks_returns_block_list(
+    app, host, mill_block, requests_proxy, wallet
+):
+    """get_blocks parses the JSON array into a list[Block], ascending by
+    idx."""
+    with app.app_context():
+        _m, b0 = mill_block(wallet)  # idx 0
+        _m, b1 = mill_block(wallet)  # idx 1
+        blocks = ApiClient(host, wallet).get_blocks(0, 2)
+        assert isinstance(blocks, list)
+        assert all(isinstance(b, Block) for b in blocks)
+        assert [b.idx for b in blocks] == [0, 1]
+        assert blocks[0].block_hash == b0.block_hash
+        assert blocks[1].block_hash == b1.block_hash
 
 
 def test_api_client_close_releases_underlying_client(app, host, wallet):

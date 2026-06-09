@@ -262,6 +262,23 @@ class ApiClient:
             raise_for_status=raise_for_status,
         )
 
+    def get_blocks(
+        self,
+        from_idx: int,
+        limit: int,
+        timeout: int | float | None = None,
+        raise_for_status: bool = True,  # noqa: FBT001
+    ) -> list[Block]:
+        """Fetch the peer's longest-chain blocks for the height range
+        [from_idx, from_idx+limit), ascending by idx (forward sync)."""
+        response = self.get(
+            '/api/blocks',
+            params={'from_idx': str(from_idx), 'limit': str(limit)},
+            timeout=timeout,
+            raise_for_status=raise_for_status,
+        )
+        return [Block.from_dict(b) for b in response.json()]
+
     def post_block(
         self,
         block: Block,
