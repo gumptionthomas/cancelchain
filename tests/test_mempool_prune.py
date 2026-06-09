@@ -5,9 +5,11 @@ later-orphaned block stays out of the pool (accept + document)."""
 from sqlalchemy.exc import OperationalError
 
 from gumptionchain.api_client import ApiClient
+from gumptionchain.chain import Chain
 from gumptionchain.database import db
 from gumptionchain.models import PendingIOflowDAO, PendingTxnDAO
 from gumptionchain.transaction import PendingTxnSet
+from gumptionchain.wallet import Wallet
 
 
 def _post_pending(host, chain, wallet, amount, subject):
@@ -71,3 +73,47 @@ def test_prune_failure_does_not_block_acceptance(
         assert m2.longest_chain.get_transaction(txn.txid) is not None
         # ...and the pool row simply lingers (read filter handles display)
         assert PendingTxnDAO.count() == 1
+
+
+def test_orphaned_block_txn_stays_pruned(
+    add_chain_block, app, host, mill_block, requests_proxy, subject, wallet
+):
+    # Accept + document (#208): a txn pruned on a later-orphaned block
+    # is NOT auto-re-added to this node's pool; recovery relies on peer
+    # re-gossip or sender re-submit. Fork construction mirrors
+    # tests/test_chain.py::test_transaction_provenance_orphaned.
+    with app.app_context():
+        wallet2 = Wallet()
+        m, b1 = mill_block(wallet)  # genesis
+        txn = _post_pending(host, m.longest_chain, wallet, 300, subject)
+        m, _b2 = mill_block(wallet)  # b2 confirms + prunes txn
+        assert PendingTxnDAO.count() == 0
+
+        # build a strictly-longer fork off b1 that excludes b2
+        alt = Chain(block_hash=b1.block_hash)
+        add_chain_block(chain=alt, milling_wallet=wallet2)
+        _, _ = add_chain_block(chain=alt, milling_wallet=wallet2)
+        alt.to_db()  # sync_longest_chain_blocks -> alt is canonical
+
+        # the txn is orphaned (not in the canonical chain)...
+        assert m.longest_chain.get_transaction(txn.txid) is None
+        # ...and stays out of the pool (the documented trade-off)
+        assert PendingTxnDAO.count() == 0
+
+
+def test_prune_handles_multiple_regular_txns(
+    app, host, mill_block, requests_proxy, subject, wallet
+):
+    with app.app_context():
+        m, _b1 = mill_block(wallet)
+        m, _b2 = mill_block(wallet)  # two coinbases to spend from
+        txn1 = _post_pending(host, m.longest_chain, wallet, 300, subject)
+        txn2 = _post_pending(host, m.longest_chain, wallet, 200, subject)
+        assert PendingTxnDAO.count() == 2
+
+        m3, b3 = mill_block(wallet)  # confirms both
+
+        assert len(b3.regular_txns) == 2
+        assert PendingTxnDAO.count() == 0
+        assert m3.longest_chain.get_transaction(txn1.txid) is not None
+        assert m3.longest_chain.get_transaction(txn2.txid) is not None
