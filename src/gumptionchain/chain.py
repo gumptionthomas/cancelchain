@@ -50,12 +50,14 @@ from gumptionchain.wallet import Wallet
 GRAIN_PER_GRIT = 100
 GENESIS_HASH = mill_hash_str('GENESIS')
 # MAX_TARGET is the difficulty floor (easiest target) and genesis/initial
-# target. BENCHMARK-PENDING: set the mainnet value on real Pi sha256(sha512)
-# hashrate so a lone Pi finds a block in <=300s. Err easier (too-easy is a
-# self-correcting fast-start that retargeting raises; too-hard stalls genesis
-# before the first retarget at block TARGET_INTERVAL). This is an easy
-# placeholder for dev/testnet.
-MAX_TARGET = '0' * 4 + 'F' * 60
+# target. Benchmarked on the target hardware (#169): Pi 3 B+ single-core
+# mill_hash = 55,547 H/s -> recommended_z floors to Z=5 (expected solve
+# ~19s single-core, ~4.5s --multi; Z=6 would be ~302s, just over the
+# 300s goal). Err-easier by design: the fast-start burst at the floor
+# self-corrects at the first retarget (block TARGET_INTERVAL); a
+# too-hard floor would stall genesis. Re-derive with
+# scripts/benchmark_max_target.py if the baseline hardware changes.
+MAX_TARGET = '0' * 5 + 'F' * 59
 # EGU 1b: flat 5-GRIT non-halving reward, 5-min blocks, 24-block retarget.
 REWARD = 5 * GRAIN_PER_GRIT
 TARGET_GOAL_SECONDS = 300
