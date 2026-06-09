@@ -35,6 +35,7 @@ class EnvAppSettings(EnvironSettings):
     PEERS: list[str] = field(default_factory=list)
     API_CLIENT_TIMEOUT: int = field(default=10)
     MAX_CHAIN_FILL_DEPTH: int = field(default=50000)
+    FORK_PRUNE_DEPTH: int = field(default=100)
     SYNC_BATCH_SIZE: int = field(default=256)
     MAX_PENDING_TXNS: int = field(default=10000)
     API_ASYNC_PROCESSING: bool = field(default=False)
