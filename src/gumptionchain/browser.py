@@ -270,9 +270,12 @@ def address_view(address: str) -> Any:
 def mempool_view() -> Any:
     try:
         # Read-only expiry filter (no prune): the API view prunes on GET,
-        # the browser read just excludes expired rows from the query.
+        # the browser read just excludes expired rows from the query,
+        # and excludes canonical-confirmed txns (#208).
         pending_page = db.paginate(
-            PendingTxnDAO.pending_q(expired=expiry_cutoff(now())),
+            PendingTxnDAO.pending_q(
+                expired=expiry_cutoff(now()), exclude_confirmed=True
+            ),
             error_out=False,
         )
         entries = []

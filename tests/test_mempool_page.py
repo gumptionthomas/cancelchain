@@ -141,3 +141,19 @@ def test_json_datas_exclude_confirmed(
         top_txid = json.loads(datas[0])['txid']
         assert top_txid == unconfirmed.txid
         assert top_txid != confirmed.txid
+
+
+def test_mempool_view_hides_confirmed_txn(
+    app, host, mill_block, requests_proxy, subject, wallet
+):
+    with app.app_context():
+        m, _b = mill_block(wallet)
+        confirmed = _post_pending(host, m.longest_chain, wallet, 300, subject)
+        m, _b = mill_block(wallet)  # confirms + prunes `confirmed`
+        _reinsert_pending(confirmed)
+        unconfirmed = _post_pending(host, m.longest_chain, wallet, 200, subject)
+
+        resp = app.test_client().get('/mempool')
+        assert resp.status_code == 200
+        assert unconfirmed.txid.encode() in resp.data
+        assert confirmed.txid.encode() not in resp.data
