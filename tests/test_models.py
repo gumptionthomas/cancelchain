@@ -1517,3 +1517,134 @@ def test_tip_idx_maintained_on_extend_and_fork(app, time_stepper, wallet):
         assert fork_row is not None
         assert fork_row.id != canonical_id
         assert fork_row.tip_idx == 1
+
+
+def test_antijoin_equivalence_all_methods(app, subject, time_stepper, wallet):
+    """Pin exact results for every unspent/balance method over a real fork
+    so both the longest-chain and ancestry routings of self.inflows run.
+
+    This is the equivalence guard for the NOT EXISTS rewrite (#165): the
+    values below are computed from the known spent/unspent partition and must
+    not change when the anti-join SQL is restructured.
+
+    Fixture shape (matches the sibling-fork pattern in test_unspent_outflows /
+    test_longest_chain_block_non_longest_extend_noop): block_1 funds wallet
+    with coinbase cb_1; block_2a and block_2b are real SIBLINGS off block_1
+    (both linked while block_1 is still the tip, before either is committed).
+    block_2a spends cb_1 entirely into an opposition stake on `subject`;
+    block_2b is an empty extension. chain_a (tip block_2a) wins the longest
+    race, so dao_a routes through longest_chain_inflows_q and dao_b (tip
+    block_2b) routes through ancestry_inflows_q.
+
+    Coinbase note: sealing block_2a over the opposition stake mints a second
+    coinbase outflow to the wallet (half the net new stake on the subject),
+    so on chain_a the wallet holds TWO unspent outflows — cb_2a's base reward
+    plus that mint — not one. The pinned values below reflect that.
+    """
+    with app.app_context():
+        time_step = time_stepper(start=datetime.datetime.now(datetime.UTC))
+        _ = next(time_step)
+
+        # block_1: coinbase cb_1 to wallet.
+        chain_a = Chain()
+        block_1 = Block()
+        chain_a.link_block(block_1)
+        chain_a.seal_block(block_1, wallet, CoinbaseMetrics())
+        block_1.mill()
+        chain_a.add_block(block_1)
+        cb_1 = block_1.coinbase
+        cb_1_amount = next(iter(cb_1.outflows)).amount
+        chain_a.to_db()
+        reward = chain_a.block_reward()
+        # The opposition stake mints a second coinbase outflow worth half the
+        # net new stake; cb_1_amount is even, so this divides exactly.
+        mint = cb_1_amount // 2
+
+        # block_2a: spend cb_1 entirely into an opposition stake on `subject`.
+        # Linked onto block_1 (still the tip).
+        _ = next(time_step)
+        t_2a = Transaction()
+        t_2a.add_inflow(Inflow(outflow_txid=cb_1.txid, outflow_idx=0))
+        t_2a.add_outflow(Outflow(amount=cb_1_amount, opposition=subject))
+        t_2a.set_wallet(wallet)
+        t_2a.seal()
+        t_2a.sign()
+        _ = next(time_step)
+        block_2a = Block()
+        block_2a.add_txn(t_2a)
+        chain_a.link_block(block_2a)
+        metrics_2a = sum(
+            (
+                chain_a.validate_block_txn(block_2a, txn)
+                for txn in block_2a.txns
+            ),
+            CoinbaseMetrics(),
+        )
+        chain_a.seal_block(block_2a, wallet, metrics_2a)
+        block_2a.mill()
+
+        # block_2b: a REAL sibling of block_2a — linked while block_1 is still
+        # the tip (before block_2a is committed), so it also links onto
+        # block_1. An empty extension (no stake).
+        _ = next(time_step)
+        block_2b = Block()
+        chain_a.link_block(block_2b)
+        chain_a.seal_block(block_2b, wallet, CoinbaseMetrics())
+        block_2b.mill()
+
+        # Commit block_2a as chain_a's tip (chain_a is the longest chain).
+        _ = next(time_step)
+        chain_a.add_block(block_2a)
+        chain_a.to_db()
+        dao_a = chain_a.to_dao()
+        assert dao_a is not None
+        assert dao_a._is_longest()  # longest-chain routing
+
+        # chain_b shares block_1; its tip is block_2b (the losing sibling).
+        _ = next(time_step)
+        chain_b = Chain()
+        chain_b.add_block(block_2b)
+        chain_b.to_db()
+        dao_b = chain_b.to_dao()
+        assert dao_b is not None
+        assert not dao_b._is_longest()  # ancestry routing
+
+        # On chain_a: cb_1 is SPENT (consumed by t_2a). block_2a's coinbase
+        # yields TWO unspent outflows to wallet — base reward + the stake mint.
+        # The opposition stake (an outflow on `subject`, no address) is unspent.
+        assert _count_select(dao_a.unspent_outflows(wallet.address)) == 2
+        assert dao_a.wallet_balance(wallet.address) == reward + mint
+        assert dao_a.opposition_balance(subject) == cb_1_amount
+        assert dao_a.support_balance(subject) == 0
+        assert (
+            _count_select(dao_a.unrescinded_outflows(subject, 'opposition'))
+            == 1
+        )
+        assert (
+            _count_select(dao_a.unrescinded_outflows(subject, 'support')) == 0
+        )
+        # Leaderboards (longest chain = chain_a).
+        wl = db.session.execute(dao_a.wallet_leaderboard()).all()
+        assert wl == [(wallet.address, reward + mint)]
+        sl = db.session.execute(dao_a.subject_leaderboard()).all()
+        # (subject, opposition, support, total)
+        assert sl == [(subject, cb_1_amount, 0, cb_1_amount)]
+
+        # On chain_b (ancestry routing): t_2a is NOT in chain_b, so cb_1 is
+        # UNSPENT; block_2b's coinbase is a single unspent reward (no stake →
+        # no mint). Two unspent transfers, no stake on subject.
+        assert _count_select(dao_b.unspent_outflows(wallet.address)) == 2
+        assert dao_b.wallet_balance(wallet.address) == 2 * reward
+        assert dao_b.opposition_balance(subject) == 0
+        assert (
+            _count_select(dao_b.unrescinded_outflows(subject, 'opposition'))
+            == 0
+        )
+        assert db.session.execute(dao_b.subject_leaderboard()).all() == []
+        assert db.session.execute(dao_b.wallet_leaderboard()).all() == [
+            (wallet.address, 2 * reward)
+        ]
+
+        # chain_a values are unchanged by chain_b's existence.
+        assert dao_a.wallet_balance(wallet.address) == reward + mint
+        assert dao_a.opposition_balance(subject) == cb_1_amount
