@@ -350,9 +350,10 @@ def test_prune_stale_forks_on_canonical_add(app, time_stepper, wallet):
         chain_b2.to_db()
         shallow_fork_hash = block_5b.block_hash
 
-        # Drive canonical past depth: idx 5, 6, 7 so canonical tip_idx (7)
-        # > deep fork (1) + depth (2), and > shallow fork (4) is NOT yet
-        # 4 < 7 - 2 = 5 → shallow within depth, must survive.
+        # Drive canonical to idx 6 (two extends off block_5a at idx 4), so the
+        # prune threshold is 6 - depth(2) = 4: the deep fork (tip_idx 1) is
+        # pruned (1 < 4) while the shallow fork (tip_idx 4) survives (4 is NOT
+        # < 4 — within depth).
         _extend(chain_a)
         canonical_tip = _extend(chain_a)
         canonical_idx = canonical_tip.idx
@@ -361,9 +362,9 @@ def test_prune_stale_forks_on_canonical_add(app, time_stepper, wallet):
         assert canonical_row is not None
         assert canonical_row.tip_idx == canonical_idx
 
-        # Deep fork (tip_idx 1 < 7 - 2 = 5): pruned.
+        # Deep fork (tip_idx 1 < 6 - 2 = 4): pruned.
         assert ChainDAO.get(block_hash=fork_tip_hash) is None
-        # Shallow fork (tip_idx 4 >= 5): NOT pruned (within depth).
+        # Shallow fork (tip_idx 4, NOT < 4): NOT pruned (within depth).
         assert ChainDAO.get(block_hash=shallow_fork_hash) is not None
         # Canonical row survives.
         assert ChainDAO.get(block_hash=canonical_tip.block_hash) is not None
