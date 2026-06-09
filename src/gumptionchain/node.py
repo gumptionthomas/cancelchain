@@ -208,9 +208,6 @@ class Node:
             for txn in block.regular_txns:
                 self.pending_txns.discard(txn)
         except SQLAlchemyError as e:
-            # Best-effort: a failed prune must never block acceptance or
-            # gossip of an already-committed block; the read-time
-            # canonical filter keeps the mempool views correct.
             rollback_session()
             self.logger.warning(e)
 
