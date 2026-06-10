@@ -5,6 +5,8 @@
 # unprivileged gc user. Seams (REPO_DIR/AS_GC/SKIP_FILE/UNIT_DIR/
 # HEALTH_SETTLE and PATH-resolved uv/systemctl) exist for the tests.
 set -euo pipefail
+# non-matching globs vanish (sync_units must tolerate kits without all unit types)
+shopt -s nullglob
 
 GC_USER="${GC_USER:-gc}"
 REPO_DIR="${REPO_DIR:-/home/${GC_USER}/gumptionchain}"
@@ -42,6 +44,10 @@ target_ref() {
   fi
 }
 
+# Rollback re-runs `db upgrade` (no downgrade); safe only under the release
+# rule that migrations never break the previous tag's code — see
+# docs/superpowers/specs/2026-06-10-egu-254-pi-miller-distribution-design.md
+# "Release discipline".
 apply() {
   run_gc git checkout --quiet "$1"
   run_gc uv sync --frozen
@@ -67,7 +73,10 @@ healthy() {
   systemctl is-active --quiet "$MILLER_UNIT"
 }
 
-run_gc git fetch --tags origin
+if ! run_gc git fetch --tags origin; then
+  echo 'fetch failed; will retry on next timer run'
+  exit 0
+fi
 
 target="$(target_ref)"
 if [ -z "$target" ]; then

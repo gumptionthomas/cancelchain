@@ -54,7 +54,7 @@ def _git(cwd, *args):
 
 @pytest.fixture
 def kit(tmp_path):
-    """A fixture 'origin' with tags v0.1.0/v0.2.0, a clone on v0.1.0,
+    """A fixture 'origin' with tags v0.1.0/v0.2.0/v0.10.0, a clone on v0.1.0,
     and stubbed seams (uv, systemctl) that log their invocations."""
     origin = tmp_path / 'origin.git'
     work = tmp_path / 'seed'
@@ -76,6 +76,11 @@ def kit(tmp_path):
     (work / 'f.txt').write_text('two\n')
     _git(work, 'commit', '-aqm', 'two')
     _git(work, 'tag', 'v0.2.0')
+    # v0.10.0 is intentionally after v0.2.0: lexical sort ('1' < '2') would
+    # wrongly pick v0.2.0; --sort=-version:refname must win with v0.10.0.
+    (work / 'f.txt').write_text('ten\n')
+    _git(work, 'commit', '-aqm', 'ten')
+    _git(work, 'tag', 'v0.10.0')
     _git(work, 'clone', '-q', '--bare', '.', str(origin))
     repo = tmp_path / 'repo'
     _git(tmp_path, 'clone', '-q', str(origin), str(repo))
@@ -127,7 +132,7 @@ def _run_update(kit, **extra):
 def test_update_follows_highest_tag(kit):
     result = _run_update(kit, GC_UPDATE_CHANNEL='tags')
     assert result.returncode == 0, result.stderr
-    assert _head_tag(kit['repo']) == 'v0.2.0'
+    assert _head_tag(kit['repo']) == 'v0.10.0'
     calls = kit['log'].read_text()
     assert 'uv sync --frozen' in calls
     assert 'gumptionchain db upgrade' in calls
@@ -154,7 +159,7 @@ def test_update_rolls_back_and_skips_bad_tag(kit):
     assert result.returncode != 0
     assert _head_tag(kit['repo']) == 'v0.1.0'
     skip = (kit['tmp'] / 'skip').read_text()
-    assert 'v0.2.0' in skip
+    assert 'v0.10.0' in skip
     # next run: bad tag is skipped, exit 0, still on v0.1.0
     sysctl.write_text(
         f'#!/bin/sh\necho "systemctl $@" >> {kit["log"]}\nexit 0\n'
