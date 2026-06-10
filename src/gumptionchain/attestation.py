@@ -110,6 +110,113 @@ def parse_stake_attestation(proof: Any) -> dict[str, Any]:
     return claim  # type: ignore[no-any-return]
 
 
+# ---------------------------------------------------------------------------
+# Wallet ↔ social-platform binding envelope (#251)
+# Spec: docs/superpowers/specs/
+#   2026-06-10-egu-251-social-binding-envelope-design.md
+# Verification of proof_url content and storage of the binding record are
+# the hub's responsibility (gumption-hub), not this base layer.
+# ---------------------------------------------------------------------------
+
+# Platform identifier: lowercase alphanumeric + hyphen, 1-32 chars. Kept in
+# lockstep with the JS validator's PLATFORM_RE in
+# clients/wallet/gc-attestation.mjs.
+_PLATFORM_RE = re.compile(r'^[a-z0-9-]{1,32}$')
+_MAX_HANDLE_LEN = 256
+_MAX_PROOF_URL_LEN = 512
+
+
+def _validate_binding_claim(claim: Any) -> None:
+    if not isinstance(claim, dict):
+        msg = 'claim must be an object'
+        raise BadAttestationError(msg)
+    platform = claim.get('platform')
+    handle = claim.get('handle')
+    if not isinstance(platform, str) or not _PLATFORM_RE.fullmatch(platform):
+        msg = 'platform must be lowercase alphanumeric/hyphen, 1-32 chars'
+        raise BadAttestationError(msg)
+    if not isinstance(handle, str) or not handle:
+        msg = 'handle must be a non-empty string'
+        raise BadAttestationError(msg)
+    if len(handle) > _MAX_HANDLE_LEN:
+        msg = f'handle must be at most {_MAX_HANDLE_LEN} chars'
+        raise BadAttestationError(msg)
+    proof_url = claim.get('proof_url')
+    if proof_url is not None:
+        if not isinstance(proof_url, str):
+            msg = 'proof_url must be a string'
+            raise BadAttestationError(msg)
+        if not proof_url or not proof_url.startswith('https://'):
+            msg = 'proof_url must be an https:// URL'
+            raise BadAttestationError(msg)
+        if len(proof_url) > _MAX_PROOF_URL_LEN:
+            msg = f'proof_url must be at most {_MAX_PROOF_URL_LEN} chars'
+            raise BadAttestationError(msg)
+
+
+def build_binding_message(claim: dict[str, Any]) -> str:
+    _validate_binding_claim(claim)
+    ordered: dict[str, Any] = {
+        'platform': claim['platform'],
+        'handle': claim['handle'],
+    }
+    if claim.get('proof_url') is not None:
+        ordered['proof_url'] = claim['proof_url']
+    return json.dumps(ordered, separators=(',', ':'), ensure_ascii=False)
+
+
+def sign_social_binding(
+    wallet: Wallet, claim: dict[str, Any], timestamp: int | None = None
+) -> dict[str, str]:
+    return sign_message(
+        wallet, build_binding_message(claim), timestamp=timestamp
+    )
+
+
+def parse_social_binding(proof: Any) -> dict[str, Any]:
+    if not isinstance(proof, dict) or not isinstance(proof.get('message'), str):
+        msg = 'proof has no message'
+        raise BadAttestationError(msg)
+    try:
+        claim = json.loads(proof['message'])
+    except ValueError as e:
+        msg = 'message is not a binding claim'
+        raise BadAttestationError(msg) from e
+    _validate_binding_claim(claim)
+    if build_binding_message(claim) != proof['message']:
+        msg = 'non-canonical binding claim encoding'
+        raise BadAttestationError(msg)
+    return claim  # type: ignore[no-any-return]
+
+
+def verify_binding(proof: Any, max_age: int | None = None) -> dict[str, Any]:
+    # Pure half of binding verification: claim shape + gc-msg-v1
+    # signature. The proof_url side (fetch + content check) is the
+    # hub's stateful half; its verdict merges into `checks` downstream.
+    claim = parse_social_binding(proof)
+    reasons: list[str] = []
+    checks = {'signature': False}
+    signer = proof.get('address')
+    try:
+        sig = verify_message(proof, max_age=max_age)
+    except BadProofError as e:
+        msg = 'binding is not a valid gc-msg-v1 proof'
+        raise BadAttestationError(msg) from e
+    if sig.get('valid') and sig.get('address') == signer:
+        checks['signature'] = True
+    else:
+        reasons.append(
+            'expired' if sig.get('reason') == 'expired' else 'bad-signature'
+        )
+    return {
+        'valid': all(checks.values()),
+        'checks': checks,
+        'signer': signer,
+        'claim': claim,
+        'reasons': reasons,
+    }
+
+
 def _outflow_matches(
     outflows: list[dict[str, Any]], claim: dict[str, Any]
 ) -> bool:
