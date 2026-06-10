@@ -3,6 +3,9 @@
 #   sudo bash install.sh
 # Used verbatim by the roll-your-own HOWTO and by provision-appliance.sh.
 set -euo pipefail
+# non-matching globs vanish (the unit-copy loop must tolerate kits
+# without all unit types)
+shopt -s nullglob
 
 GC_USER="${GC_USER:-gc}"
 GC_HOME="$(getent passwd "$GC_USER" | cut -d: -f6)"
@@ -22,6 +25,9 @@ fi
 
 as_gc() { runuser -u "$GC_USER" -- "$@"; }
 
+# fresh Raspberry Pi OS images ship stale apt indexes; update first or
+# the install fails with 'Unable to locate package'
+apt-get update -qq
 apt-get install -y --no-install-recommends git curl ca-certificates
 
 if [ ! -x "${GC_HOME}/.local/bin/uv" ]; then
