@@ -119,7 +119,8 @@ export function validateBindingClaim(claim) {
   if (typeof handle !== 'string' || !handle) {
     throw new BadAttestationError('handle must be a non-empty string');
   }
-  if (handle.length > MAX_HANDLE_LEN) {
+  // Spread to count code points (not UTF-16 units); parity with Python len().
+  if ([...handle].length > MAX_HANDLE_LEN) {
     throw new BadAttestationError(`handle must be at most ${MAX_HANDLE_LEN} chars`);
   }
   if (proof_url !== null) {
@@ -129,7 +130,7 @@ export function validateBindingClaim(claim) {
     if (!proof_url.startsWith('https://')) {
       throw new BadAttestationError('proof_url must be an https:// URL');
     }
-    if (proof_url.length > MAX_PROOF_URL_LEN) {
+    if ([...proof_url].length > MAX_PROOF_URL_LEN) {
       throw new BadAttestationError(
         `proof_url must be at most ${MAX_PROOF_URL_LEN} chars`,
       );
