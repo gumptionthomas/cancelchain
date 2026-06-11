@@ -16,6 +16,10 @@ MILLER_UNIT="${MILLER_UNIT:-gumptionchain-miller}"
 AS_GC="${AS_GC-runuser -u ${GC_USER} --}"
 HEALTH_SETTLE="${HEALTH_SETTLE:-60}"
 UNIT_DIR="${UNIT_DIR:-/etc/systemd/system}"
+# Absolute path: this script runs under systemd as root, whose PATH does
+# not include the gc user's ~/.local/bin (the miller unit also uses the
+# absolute path for the same reason).
+UV="${UV:-/home/${GC_USER}/.local/bin/uv}"
 
 cd "$REPO_DIR"
 
@@ -50,8 +54,8 @@ target_ref() {
 # "Release discipline".
 apply() {
   run_gc git checkout --quiet "$1"
-  run_gc uv sync --frozen
-  run_gc uv run gumptionchain db upgrade
+  run_gc "$UV" sync --frozen
+  run_gc "$UV" run gumptionchain db upgrade
 }
 
 sync_units() {

@@ -99,6 +99,9 @@ def kit(tmp_path):
     env = os.environ | {
         'REPO_DIR': str(repo),
         'AS_GC': '',
+        # update.sh defaults UV to the gc user's absolute ~/.local/bin/uv
+        # (root's systemd PATH lacks it); tests point it at the stub.
+        'UV': str(uv),
         'SKIP_FILE': str(tmp_path / 'skip'),
         'UNIT_DIR': str(tmp_path / 'units'),
         'HEALTH_SETTLE': '0',

@@ -28,8 +28,9 @@ Column notes:
   generated filename before the rename to `gcm-NN.pem`.
 - **Shipped** — the date the appliance left the bench. Leave `(canary)` for
   gcm-01; it never ships.
-- Wallet address and location are sensitive; keep this file in your private
-  operator notes or a secrets store, not in the public repo.
+- Wallet address and location are sensitive; the table above is a
+  template. Keep the **filled-in copy** in your private operator notes or
+  a secrets store (e.g. `~/gc-fleet/roster.md`), not in the public repo.
 
 ---
 

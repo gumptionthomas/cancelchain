@@ -31,6 +31,11 @@ apt-get update -qq
 apt-get install -y --no-install-recommends git curl ca-certificates
 
 if [ ! -x "${GC_HOME}/.local/bin/uv" ]; then
+  # Official uv install method (HTTPS to astral.sh). Supply-chain
+  # tradeoff acknowledged: piping a remote script to sh trusts astral.sh
+  # at install time. The cautious alternative is to pre-install uv
+  # yourself (any method that lands it at ~gc/.local/bin/uv) — this
+  # block is skipped when uv is already present.
   curl -LsSf https://astral.sh/uv/install.sh | as_gc sh
 fi
 export PATH="${GC_HOME}/.local/bin:${PATH}"
