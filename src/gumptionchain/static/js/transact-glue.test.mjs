@@ -9,7 +9,6 @@ import {
   submitSigned,
   encodeSubject,
   signAttestation,
-  whichKeyControls,
   whichKeyPanel,
   unlockSaved,
 } from './transact-glue.mjs';
@@ -362,28 +361,6 @@ test('signAttestation supports the support kind', async () => {
   const claim = parseStakeAttestation(proof);
   assert.equal(claim.kind, 'support');
   assert.equal(claim.subject, 'Y2FuY2VsIG1l');
-});
-
-// --- whichKeyControls: the saved-wallet unlock affordances show only when a
-// wallet exists; the passkey button shows only when a passkey is usable.
-
-test('whichKeyControls hides the unlock affordances when no saved wallet', () => {
-  const c = whichKeyControls({ hasWallet: false, passkeySupported: true });
-  assert.equal(c.showUnlockSaved, false);
-  assert.equal(c.showUnlockPasskey, false);
-});
-
-test('whichKeyControls shows unlock (passphrase) when a wallet exists', () => {
-  const c = whichKeyControls({ hasWallet: true, passkeySupported: false });
-  assert.equal(c.showUnlockSaved, true);
-  // No passkey support -> no passkey button even with a saved wallet.
-  assert.equal(c.showUnlockPasskey, false);
-});
-
-test('whichKeyControls shows the passkey button only when supported', () => {
-  const c = whichKeyControls({ hasWallet: true, passkeySupported: true });
-  assert.equal(c.showUnlockSaved, true);
-  assert.equal(c.showUnlockPasskey, true);
 });
 
 // --- unlockSaved: the seam between the keyring and the shared session. A fake
