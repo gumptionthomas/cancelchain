@@ -25,7 +25,7 @@ def test_host_address(app, host_netloc, requests_proxy, signing_key):
         ApiClient(host, signing_key)
         w = SigningKey()
         invalid_host = f'http://{w.address}@{host_netloc}'
-        with pytest.raises(Exception, match='Address/signing_key mismatch'):
+        with pytest.raises(Exception, match='Address/signing-key mismatch'):
             ApiClient(invalid_host, signing_key)
 
 
