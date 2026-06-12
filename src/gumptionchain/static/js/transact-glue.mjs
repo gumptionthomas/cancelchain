@@ -3,15 +3,15 @@
 // pre-signed txn" mode. The active Wallet lives ONLY in the shared per-page
 // wallet-session holder — never persisted from here, never sent (only the
 // signature + public key leave the browser). Two ways to obtain that wallet:
-//   - "Unlock your saved wallet" — decrypt the gc-keyring record persisted on
+//   - Unlock the saved signing key — decrypt the gc-keyring record persisted on
 //     /wallet (passphrase or, on a secure origin, passkey), OR
-//   - "use a key just for this session" — paste a base58 private key (ephemeral
+//   - Advanced: use a one-session key — paste a base58 private key (ephemeral
 //     import; nothing is saved).
 // Either way the unlocked key is subject to the same auto-lock policy (idle /
-// tab-hide / page-unload / manual forget) via wallet-session.
+// tab-hide / page-unload / manual lock) via wallet-session.
 //
 // The pure helpers (buildQuery / submitPath / responseMessage / buildUnsigned /
-// signAndSubmit / whichKeyControls / unlockSaved) are exported and DOM-free so
+// signAndSubmit / whichKeyPanel / unlockSaved) are exported and DOM-free so
 // they can be unit-tested with fakes. The DOM wiring is in init().
 import { Wallet } from '../wallet/gc-wallet.mjs';
 import { signHeaders } from '../wallet/gc-sig.mjs';
@@ -25,6 +25,7 @@ import * as keyring from '../wallet/gc-keyring.mjs';
 import { makeIdbStore } from '../wallet/gc-store-idb.mjs';
 import { session as defaultSession } from './wallet-session.mjs';
 import { makePasskey } from './wallet-passkey.mjs';
+import { readTrustAck, writeTrustAck } from './wallet-glue.mjs';
 
 const API_PREFIX = '/api';
 
@@ -277,13 +278,35 @@ export async function signAttestation({
 
 // --- Saved-wallet unlock ----------------------------------------------------
 
-// Which saved-wallet unlock affordances to show, given the observable state.
-// The passphrase unlock shows whenever a wallet is persisted on this origin;
-// the passkey button shows only when a passkey is actually usable here.
-export function whichKeyControls({ hasWallet, passkeySupported }) {
+// Pure state decision for the key panel (#262). unlockedKind is
+// null (locked / no key), 'saved' (unlocked from the keyring), or
+// 'session' (one-session key imported under Advanced).
+export function whichKeyPanel({
+  hasRecord,
+  unlockedKind,
+  passkeySupported,
+}) {
+  if (unlockedKind) {
+    return {
+      state: 'unlocked',
+      badge: unlockedKind,
+      actionsEnabled: true,
+      showUnlockPasskey: false,
+    };
+  }
+  if (hasRecord) {
+    return {
+      state: 'locked',
+      badge: null,
+      actionsEnabled: false,
+      showUnlockPasskey: !!passkeySupported,
+    };
+  }
   return {
-    showUnlockSaved: !!hasWallet,
-    showUnlockPasskey: !!hasWallet && !!passkeySupported,
+    state: 'none',
+    badge: null,
+    actionsEnabled: false,
+    showUnlockPasskey: false,
   };
 }
 
@@ -372,12 +395,23 @@ export function init(
     updateFields();
   }
 
-  // --- Saved-wallet unlock (gc-keyring record persisted on /wallet) ---
-  const savedSection = $('#saved-wallet');
+  // --- Key panel element lookups (three-state: none / locked / unlocked) ---
   const unlockPassphrase = $('#unlock-passphrase');
   const unlockBtn = $('#unlock-saved-btn');
   const unlockPasskeyBtn = $('#unlock-saved-passkey-btn');
   const unlockStatus = $('#unlock-status');
+
+  // Key panel new-state elements (#262).
+  const createPassphrase = $('#key-create-passphrase');
+  const createTrustAck = $('#key-trust-ack');
+  const createBtn = $('#key-create-btn');
+  const createStatus = $('#key-create-status');
+  const keyBadge = $('#key-badge');
+  const lockBtn = $('#key-lock-btn');
+  const backupNudge = $('#key-backup-nudge');
+  const storage = win ? win.localStorage : undefined;
+  // 'saved' | 'session' | null — which key source unlocked the page.
+  let unlockSource = null;
 
   // Key import (b58 textarea / .pem file) + forget.
   const keyStatus = $('#key-status');
@@ -390,7 +424,7 @@ export function init(
   // controls show, plus the passkey-unlock click.
   let passkey = null;
   // Whether a wallet was unlocked since the last lock — so an idle/hide lock
-  // only reports "locked" when there was actually a key to drop.
+  // only reports 'locked' when there was actually a key to drop.
   let wasUnlocked = false;
 
   function show(el, visible) {
@@ -407,7 +441,7 @@ export function init(
   // Is a wallet available for signing (from a saved-wallet unlock OR an
   // ephemeral import)? If not, surface the no-key message and return null.
   const NO_KEY_MSG =
-    'Unlock your saved wallet or import a key for this session first.';
+    'Unlock your signing key or import a one-session key first.';
   function requireWallet(statusEl) {
     const wallet = session.getWallet();
     if (!wallet) {
@@ -417,14 +451,46 @@ export function init(
     return wallet;
   }
 
-  // Re-render the saved-wallet unlock controls from the current state. Hidden
-  // entirely when no wallet is persisted on this origin (ephemeral import is
-  // then the only path).
-  async function renderKeyControls() {
-    const hasWallet = await keyring.hasWallet(store);
-    const c = whichKeyControls({ hasWallet, passkeySupported: passkey != null });
-    show(savedSection, c.showUnlockSaved);
+  // Render the key panel from the current state: show exactly one state
+  // container, update the badge, and gate the action buttons.
+  async function renderKeyPanel() {
+    let rec = null;
+    try {
+      rec = await store.get();
+    } catch {
+      // IDB unavailable: fall through to the no-key state; the
+      // Advanced one-session key still works.
+      if (createStatus) {
+        setStatus(
+          createStatus,
+          'Saved keys are unavailable in this browser; use the ' +
+            'Advanced one-session key below.',
+          'error',
+        );
+      }
+    }
+    const c = whichKeyPanel({
+      hasRecord: rec !== null,
+      unlockedKind: session.getWallet() ? unlockSource : null,
+      passkeySupported: passkey != null,
+    });
+    for (const el of root.querySelectorAll('[data-key-state]')) {
+      show(el, el.dataset.keyState === c.state);
+    }
     show(unlockPasskeyBtn, c.showUnlockPasskey);
+    const addrEl = root.querySelector('[data-key-address]');
+    if (addrEl && rec) addrEl.textContent = `${rec.address.slice(0, 12)}…`;
+    if (keyBadge && c.state === 'unlocked') {
+      const addr = await session.getWallet().address();
+      keyBadge.textContent =
+        c.badge === 'session'
+          ? `one-session key · ${addr.slice(0, 12)}…`
+          : `signing as ${addr.slice(0, 12)}…`;
+    }
+    if (backupNudge && c.state !== 'unlocked') show(backupNudge, false);
+    for (const btn of [buildBtn, confirmBtn]) {
+      if (btn) btn.disabled = !c.actionsEnabled;
+    }
   }
 
   // After any unlock/import, report the now-available address (in memory only).
@@ -447,11 +513,13 @@ export function init(
           return;
         }
         await unlockSaved({ store, session, passphrase });
+        unlockSource = 'saved';
         clearSecrets();
         await onUnlocked(
           unlockStatus,
-          'Unlocked your saved wallet for this session',
+          'Unlocked your signing key for this session',
         );
+        await renderKeyPanel();
       } catch {
         // Fixed message, no secret echo: a wrong passphrase fails closed in the
         // keyring (GCM auth tag), and the session is left locked.
@@ -472,10 +540,12 @@ export function init(
           return;
         }
         await unlockSaved({ store, session, passkey });
+        unlockSource = 'saved';
         await onUnlocked(
           unlockStatus,
-          'Unlocked your saved wallet with a passkey',
+          'Unlocked your signing key with a passkey',
         );
+        await renderKeyPanel();
       } catch (e) {
         setStatus(
           unlockStatus,
@@ -486,7 +556,53 @@ export function init(
     });
   }
 
-  // --- Ephemeral import (a key just for this session; nothing is saved) ---
+  // --- Create handler: generate a new wallet, enroll in keyring, set session.
+  if (createBtn) {
+    createBtn.addEventListener('click', async () => {
+      const passphrase = createPassphrase ? createPassphrase.value : '';
+      if (!passphrase) {
+        setStatus(createStatus, 'Set a passphrase first.', 'error');
+        return;
+      }
+      if (!readTrustAck(storage)) {
+        if (createTrustAck && createTrustAck.checked) {
+          writeTrustAck(storage);
+        } else {
+          setStatus(
+            createStatus,
+            'Acknowledge the trust note first: persist only on a node ' +
+              'you trust.',
+            'error',
+          );
+          return;
+        }
+      }
+      createBtn.disabled = true; // no double-submit while enrolling
+      try {
+        const wallet = await Wallet.generate();
+        await keyring.enroll(wallet, { store }, { passphrase });
+        session.setWallet(wallet);
+        unlockSource = 'saved';
+        if (backupNudge) show(backupNudge, true);
+        await renderKeyPanel();
+      } catch (e) {
+        setStatus(createStatus, `Could not create: ${msgOf(e)}`, 'error');
+      } finally {
+        // Wipe the chosen passphrase (and any other password input) on
+        // success AND failure; re-enable the button.
+        clearSecrets();
+        createBtn.disabled = false;
+      }
+    });
+  }
+
+  if (lockBtn) {
+    lockBtn.addEventListener('click', () => {
+      session.lock();
+    });
+  }
+
+  // --- Ephemeral import (a one-session key; nothing is saved) ---
   if (importBtn) {
     importBtn.addEventListener('click', async () => {
       try {
@@ -496,7 +612,9 @@ export function init(
           return;
         }
         session.setWallet(await importB58(b58));
+        unlockSource = 'session';
         await onUnlocked(keyStatus, 'Key imported');
+        await renderKeyPanel();
       } catch (e) {
         session.lock();
         setStatus(keyStatus, `Could not import key: ${msgOf(e)}`, 'error');
@@ -520,6 +638,7 @@ export function init(
     forgetBtn.addEventListener('click', () => {
       // Lock clears the session wallet (whether it came from a saved-wallet
       // unlock or an ephemeral import); the persisted ciphertext is untouched.
+      unlockSource = null;
       session.lock();
       if (b58Input) b58Input.value = '';
       clearSecrets();
@@ -694,10 +813,9 @@ export function init(
     });
   }
 
-  // Resolve passkey capability, reveal the saved-wallet controls if a wallet is
-  // persisted here, and install the shared auto-lock policy so an unlocked key
-  // (saved OR ephemeral) is dropped on idle / tab-hide / page-unload. A lock
-  // re-renders the controls (and surfaces it on the key status).
+  // Resolve passkey capability, render the initial key panel state, and install
+  // the shared auto-lock policy so an unlocked key (saved OR session) is dropped
+  // on idle / tab-hide / page-unload. A lock re-renders the panel.
   (async () => {
     passkey = await makePasskey({ window: win, rpName });
     session.onLock(() => {
@@ -705,12 +823,13 @@ export function init(
         setStatus(keyStatus, 'Key locked — cleared from memory.', 'info');
       }
       wasUnlocked = false;
-      renderKeyControls().catch(() => {});
+      unlockSource = null;
+      renderKeyPanel().catch(() => {});
     });
     if (doc && win) {
       session.installAutoLock({ document: doc, window: win });
     }
-    await renderKeyControls();
+    await renderKeyPanel();
   })().catch(() => {});
 }
 
