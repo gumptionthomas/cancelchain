@@ -1,0 +1,51 @@
+<!-- @dsCard group="Motion" viewport="700x230" name="Ledger fill & seal stamp" subtitle="Bars grow from the center; the seal thunks & pulses gold" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<link rel="stylesheet" href="../styles.css">
+<style>
+  body { margin: 0; padding: 22px 24px; background: var(--paper); display: flex; gap: 32px; align-items: center; }
+  .ledger-board { margin: 0; flex: 1; }
+  .seal-wrap { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+  .cap { font-family: var(--font-mono); font-size: 10px; color: var(--muted); }
+</style>
+</head>
+<body class="theme-2b2f">
+  <div class="ledger-board" id="board">
+    <div class="ledger-row">
+      <span class="ledger-amt">4.20</span>
+      <div class="ledger-half"><div class="ledger-bar ledger-bar-sup" style="width:72%"></div></div>
+      <a class="ledger-subject">Local Library</a>
+      <div class="ledger-half"><div class="ledger-bar ledger-bar-opp" style="width:28%"></div></div>
+      <span class="ledger-amt">1.60</span>
+    </div>
+    <div class="ledger-row">
+      <span class="ledger-amt">2.10</span>
+      <div class="ledger-half"><div class="ledger-bar ledger-bar-sup" style="width:35%"></div></div>
+      <a class="ledger-subject">Parking Fees</a>
+      <div class="ledger-half"><div class="ledger-bar ledger-bar-opp" style="width:65%"></div></div>
+      <span class="ledger-amt">3.90</span>
+    </div>
+    <p class="ledger-legend text-center" style="text-align:center;margin:.3rem 0 0">&#9664; support · oppose &#9654;</p>
+  </div>
+  <div class="seal-wrap">
+    <div class="seal-dot verified pulsing" id="seal">&#10003;</div>
+    <div class="cap">verified</div>
+  </div>
+  <script>
+    // Re-trigger the brand animations on a loop so the card stays alive.
+    const board = document.getElementById('board');
+    const seal = document.getElementById('seal');
+    function replay() {
+      board.querySelectorAll('.ledger-bar').forEach(b => {
+        b.style.animation = 'none'; void b.offsetWidth;
+        b.style.animation = '';
+      });
+      seal.classList.remove('verified', 'pulsing'); void seal.offsetWidth;
+      seal.classList.add('verified', 'pulsing');
+    }
+    setInterval(replay, 4200);
+  </script>
+</body>
+</html>

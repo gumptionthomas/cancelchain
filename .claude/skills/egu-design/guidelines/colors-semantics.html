@@ -1,0 +1,25 @@
+<!-- @dsCard group="Colors" viewport="700x150" name="Ledger semantics — support & oppose" subtitle="The two verdicts: commendation (green) vs grievance (red)" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<link rel="stylesheet" href="../styles.css">
+<style>
+  body { margin: 0; padding: 18px; }
+  .row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  .sw { border-radius: var(--radius); overflow: hidden; border: 1px solid var(--rule); }
+  .chip { height: 70px; }
+  .meta { padding: 7px 9px; background: var(--paper-card); }
+  .name { font-family: var(--font-display); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--gold-deep); }
+  .hex { font-family: var(--font-mono); font-size: 11px; color: var(--muted); }
+</style>
+</head>
+<body class="theme-2b2f">
+  <div class="row">
+    <div class="sw"><div class="chip" style="background:var(--support)"></div><div class="meta"><div class="name">support</div><div class="hex">#3f8f4f</div></div></div>
+    <div class="sw"><div class="chip" style="background:var(--support-bar)"></div><div class="meta"><div class="name">support-bar</div><div class="hex">#7fae77</div></div></div>
+    <div class="sw"><div class="chip" style="background:var(--oppose-bar)"></div><div class="meta"><div class="name">oppose-bar</div><div class="hex">#c98080</div></div></div>
+    <div class="sw"><div class="chip" style="background:var(--oppose)"></div><div class="meta"><div class="name">oppose</div><div class="hex">#9c4b3b</div></div></div>
+  </div>
+</body>
+</html>

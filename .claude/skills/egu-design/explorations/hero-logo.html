@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EGU hero logo</title>
+<link rel="stylesheet" href="../styles.css">
+<style>
+  body { margin: 0; background: var(--paper); color: var(--ink); padding: 0; }
+  .bar { background:#e7e3d9; padding:14px clamp(20px,5vw,64px); border-bottom:1px solid var(--rule-soft); }
+  .bar .k { font-family:var(--font-mono); font-size:11px; color:var(--muted); }
+  .stage { display:flex; flex-direction:column; align-items:center; gap:14px; padding:64px 20px 44px; }
+  .mark { width:300px; height:300px; }
+  .wordmark { font-family:var(--font-display); color:var(--gold-dark); text-transform:uppercase; letter-spacing:.04em; font-size:clamp(1.5rem,4vw,2.2rem); line-height:1.12; text-align:center; margin:0; }
+  .tag { color:var(--muted); font-size:1rem; margin:0; text-align:center; }
+  .row { display:flex; gap:48px; align-items:center; justify-content:center; flex-wrap:wrap; padding:36px 20px 64px; border-top:1px solid var(--rule-soft); background:#fbf8f0; }
+  .row .cell { display:flex; flex-direction:column; align-items:center; gap:10px; }
+  .row .lab { font-family:var(--font-mono); font-size:10px; color:var(--muted-gold); text-transform:uppercase; letter-spacing:.04em; }
+  .lockup-h { display:flex; align-items:center; gap:18px; }
+  .lockup-h .wm { font-family:var(--font-display); color:var(--gold-dark); text-transform:uppercase; letter-spacing:.04em; font-size:1.3rem; line-height:1; max-width:9ch; }
+  .onink { background:var(--ticker-bg); border-radius:16px; padding:18px; }
+
+  /* the orbit is driven by SMIL <animateTransform> (rotates around 100,100) */
+</style>
+</head>
+<body>
+  <div class="bar"><span class="k">EGU brand · hero logo — constellation</span></div>
+
+  <!-- SVG hero mark template -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+    <radialGradient id="coreglow" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#d4a520" stop-opacity=".22"/>
+      <stop offset="60%" stop-color="#d4a520" stop-opacity=".05"/>
+      <stop offset="100%" stop-color="#d4a520" stop-opacity="0"/>
+    </radialGradient>
+    <symbol id="hero-mark" viewBox="0 0 200 200">
+      <circle cx="100" cy="100" r="70" fill="url(#coreglow)"/>
+      <circle cx="100" cy="100" r="74" fill="none" stroke="#d4a520" stroke-width="1.25" opacity=".3"/>
+      <circle cx="100" cy="100" r="56" fill="none" stroke="#d4a520" stroke-width="1" opacity=".18"/>
+      <!-- orbiting satellites (the universe of apps) -->
+      <g class="orbit">
+        <animateTransform attributeName="transform" attributeType="XML" type="rotate" from="0 100 100" to="360 100 100" dur="26s" repeatCount="indefinite"/>
+        <circle cx="100" cy="26" r="8" fill="#e8c547"/>
+        <circle cx="164" cy="137" r="6.5" fill="#d4a520"/>
+        <circle cx="36" cy="137" r="5.5" fill="#b8960c"/>
+      </g>
+      <g class="orbit rev">
+        <animateTransform attributeName="transform" attributeType="XML" type="rotate" from="360 100 100" to="0 100 100" dur="38s" repeatCount="indefinite"/>
+        <circle cx="156" cy="100" r="3.5" fill="#d4a520" opacity=".8"/>
+        <circle cx="44" cy="100" r="3" fill="#e8c547" opacity=".7"/>
+      </g>
+      <!-- Gumption core: the G, our construction, in chain green -->
+      <g fill="none" stroke="#2f7d32" stroke-width="16" stroke-linecap="round">
+        <path d="M134 100 A34 34 0 1 1 124.04 75.96"/>
+        <path d="M134 100 L100 100"/>
+      </g>
+    </symbol>
+  </defs></svg>
+
+  <div class="stage">
+    <svg class="mark" viewBox="0 0 200 200">
+      <circle cx="100" cy="100" r="70" fill="url(#coreglow)"/>
+      <circle cx="100" cy="100" r="74" fill="none" stroke="#d4a520" stroke-width="1.25" opacity=".3"/>
+      <circle cx="100" cy="100" r="56" fill="none" stroke="#d4a520" stroke-width="1" opacity=".18"/>
+      <g class="orbit">
+        <animateTransform attributeName="transform" attributeType="XML" type="rotate" from="0 100 100" to="360 100 100" dur="26s" repeatCount="indefinite"/>
+        <circle cx="100" cy="26" r="8" fill="#e8c547"/>
+        <circle cx="164" cy="137" r="6.5" fill="#d4a520"/>
+        <circle cx="36" cy="137" r="5.5" fill="#b8960c"/>
+      </g>
+      <g class="orbit rev">
+        <animateTransform attributeName="transform" attributeType="XML" type="rotate" from="360 100 100" to="0 100 100" dur="38s" repeatCount="indefinite"/>
+        <circle cx="156" cy="100" r="3.5" fill="#d4a520" opacity=".8"/>
+        <circle cx="44" cy="100" r="3" fill="#e8c547" opacity=".7"/>
+      </g>
+      <g fill="none" stroke="#2f7d32" stroke-width="16" stroke-linecap="round">
+        <path d="M134 100 A34 34 0 1 1 124.04 75.96"/>
+        <path d="M134 100 L100 100"/>
+      </g>
+    </svg>
+    <h1 class="wordmark">The Extended<br>Gumption<br>Universe</h1>
+    <p class="tag">One banner. One ledger. One grain of gumption at a time.</p>
+  </div>
+
+  <div class="row">
+    <div class="cell">
+      <div class="lab">Horizontal lockup</div>
+      <div class="lockup-h">
+        <svg width="92" height="92" viewBox="0 0 200 200"><use href="#hero-mark"/></svg>
+        <span class="wm">The Extended Gumption Universe</span>
+      </div>
+    </div>
+    <div class="cell">
+      <div class="lab">On ink</div>
+      <div class="onink"><svg width="120" height="120" viewBox="0 0 200 200"><use href="#hero-mark"/></svg></div>
+    </div>
+    <div class="cell">
+      <div class="lab">Small (64)</div>
+      <svg width="64" height="64" viewBox="0 0 200 200"><use href="#hero-mark"/></svg>
+    </div>
+  </div>
+</body>
+</html>

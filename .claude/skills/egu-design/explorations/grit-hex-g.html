@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GRIT glyph — the G</title>
+<link rel="stylesheet" href="../styles.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Montserrat:wght@800&family=DM+Serif+Display&family=Inter:wght@800&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; background: #e7e3d9; color: var(--ink); padding: 40px clamp(20px,5vw,64px) 80px; }
+  .wrap { max-width: 1180px; margin: 0 auto; }
+  h1 { font-family: var(--font-display); color: var(--gold-dark); text-transform: uppercase; letter-spacing: .04em; font-size: 1.9rem; margin: .25rem 0 .4rem; }
+  .intro { max-width: 62ch; color: var(--muted); margin: 0 0 28px; }
+  .sec { font-family: var(--font-display); text-transform: uppercase; letter-spacing: .06em; color: var(--gold-deep); font-size: .92rem; border-bottom: 2px solid var(--rule-strong); padding-bottom: 6px; margin: 30px 0 18px; }
+  .row { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 18px; }
+  .card { background: #fff; border-radius: 14px; border: 1px solid var(--rule-soft); box-shadow: 0 1px 2px rgba(42,38,32,.06); padding: 18px; }
+  .card .nm { font-family: var(--font-display); text-transform: uppercase; letter-spacing: .03em; color: var(--gold-deep); font-size: .9rem; }
+  .card .dc { font-size: 12px; color: var(--muted); margin: 4px 0 14px; line-height: 1.45; min-height: 48px; }
+  .stage { background: var(--paper); border: 1px solid var(--rule-soft); border-radius: 10px; height: 168px; display: flex; align-items: center; justify-content: center; }
+  .reco { box-shadow: 0 0 0 2px var(--gold), 0 6px 20px rgba(107,86,8,.16); }
+  .reco .nm::after { content: " ★"; color: var(--gold-dark); }
+  .ctx { background:#fff; border-radius:14px; border:1px solid var(--rule-soft); box-shadow:0 1px 2px rgba(42,38,32,.06); padding:22px; display:grid; grid-template-columns: repeat(auto-fit, minmax(150px,1fr)); gap:20px; align-items:center; }
+  .cell { display:flex; flex-direction:column; align-items:center; gap:8px; text-align:center; }
+  .cell .lab { font-family: var(--font-mono); font-size:10px; color: var(--muted-gold); text-transform:uppercase; letter-spacing:.04em; }
+  .sizes { display:flex; align-items:flex-end; gap:14px; }
+  .dark { background: var(--ticker-bg); border-radius:10px; padding:14px 18px; display:flex; align-items:center; gap:10px; }
+  .dark .v { color: var(--ticker-sup); font-weight:600; font-size:13px; }
+  .glyph { display:inline-flex; vertical-align:middle; }
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <linearGradient id="face" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f5d76e"/><stop offset="1" stop-color="#d4a520"/></linearGradient>
+    <linearGradient id="edge" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e8c547"/><stop offset="1" stop-color="#8b6914"/></linearGradient>
+
+    <!-- the locked flat-top bevel frame, NO letter -->
+    <symbol id="frame" viewBox="0 0 140 140">
+      <polygon points="101,16 132,70 101,124 39,124 8,70 39,16" fill="url(#edge)"/>
+      <polygon points="101,16 132,70 101,124 39,124 8,70 39,16" fill="none" stroke="#6b5608" stroke-width="1.3" opacity=".5"/>
+      <polygon points="39,16 101,16 93,30 47,30" fill="#f3dd8a" opacity=".5"/>
+      <polygon points="93,30 116,70 93,110 47,110 24,70 47,30" fill="url(#face)"/>
+      <g stroke="#6b5608" stroke-width="1" opacity=".2">
+        <line x1="101" y1="16" x2="93" y2="30"/><line x1="132" y1="70" x2="116" y2="70"/><line x1="101" y1="124" x2="93" y2="110"/><line x1="39" y1="124" x2="47" y2="110"/><line x1="8" y1="70" x2="24" y2="70"/><line x1="39" y1="16" x2="47" y2="30"/>
+      </g>
+    </symbol>
+
+    <!-- custom-drawn geometric G (ownable, font-free) -->
+    <symbol id="frame-drawn" viewBox="0 0 140 140">
+      <use href="#frame"/>
+      <g fill="none" stroke="#6b5608" stroke-width="15" stroke-linecap="butt" stroke-linejoin="miter">
+        <path d="M96.5 53 A33 33 0 1 0 96.5 87"/>
+        <path d="M70 70 L97 70 L97 88"/>
+      </g>
+    </symbol>
+    <!-- mono of the drawn G (knockout) -->
+    <symbol id="frame-drawn-mono" viewBox="0 0 140 140">
+      <polygon points="101,16 132,70 101,124 39,124 8,70 39,16" fill="#b8960c"/>
+      <g fill="none" stroke="#fbf8f0" stroke-width="15" stroke-linecap="butt">
+        <path d="M96.5 53 A33 33 0 1 0 96.5 87"/>
+        <path d="M70 70 L97 70 L97 88"/>
+      </g>
+    </symbol>
+  </defs>
+</svg>
+
+<div class="wrap">
+  <p class="egu-kicker" style="margin:0">EGU brand · currency mark · the letter</p>
+  <h1>GRIT — choosing the “G”</h1>
+  <p class="intro">Flat-top bevel locked. Now the letterform, sized up to own the token. The <strong>custom-drawn geometric G</strong> is my pick — it’s the most unmistakably “G”, it’s ours (no font file to ship, perfectly crisp at any size, even a favicon), and its even strokes suit a struck coin. The rest are standard fonts for comparison.</p>
+
+  <div class="sec">Letterform options — all enlarged</div>
+  <div class="row">
+    <div class="card reco">
+      <div class="nm">Geometric (drawn)</div>
+      <div class="dc">Hand-built from an arc + bar. Ownable, font-free, crisp at 16px. Even weight = struck-metal feel.</div>
+      <div class="stage"><svg width="138" height="138"><use href="#frame-drawn"/></svg></div>
+    </div>
+    <div class="card">
+      <div class="nm">Archivo Black</div>
+      <div class="dc">Heavy geometric grotesque. Big, confident, fills the token; very “coin”.</div>
+      <div class="stage"><svg width="138" height="138"><use href="#frame"/><text x="70" y="72" text-anchor="middle" dominant-baseline="central" font-family="'Archivo Black',sans-serif" font-size="74" fill="#6b5608">G</text></svg></div>
+    </div>
+    <div class="card">
+      <div class="nm">Montserrat 800</div>
+      <div class="dc">Refined geometric. Slightly lighter and more elegant than Archivo.</div>
+      <div class="stage"><svg width="138" height="138"><use href="#frame"/><text x="70" y="72" text-anchor="middle" dominant-baseline="central" font-family="Montserrat,sans-serif" font-weight="800" font-size="76" fill="#6b5608">G</text></svg></div>
+    </div>
+    <div class="card">
+      <div class="nm">Inter 800</div>
+      <div class="dc">The brand’s body face — most cohesive with the UI, a “neutral standard” G.</div>
+      <div class="stage"><svg width="138" height="138"><use href="#frame"/><text x="70" y="72" text-anchor="middle" dominant-baseline="central" font-family="Inter,sans-serif" font-weight="800" font-size="72" fill="#6b5608">G</text></svg></div>
+    </div>
+    <div class="card">
+      <div class="nm">DM Serif Display</div>
+      <div class="dc">Civic / archival gravitas — a ledger-book serif. Most “Great Ledger”.</div>
+      <div class="stage"><svg width="138" height="138"><use href="#frame"/><text x="70" y="73" text-anchor="middle" dominant-baseline="central" font-family="'DM Serif Display',serif" font-size="84" fill="#6b5608">G</text></svg></div>
+    </div>
+    <div class="card">
+      <div class="nm">Righteous (was)</div>
+      <div class="dc">The original — the brand display face, but a non-standard G. Shown larger for reference.</div>
+      <div class="stage"><svg width="138" height="138"><use href="#frame"/><text x="70" y="73" text-anchor="middle" dominant-baseline="central" font-family="Righteous,sans-serif" font-size="72" fill="#6b5608">G</text></svg></div>
+    </div>
+  </div>
+
+  <div class="sec">The drawn G in context</div>
+  <div class="ctx">
+    <div class="cell">
+      <span class="lab">Scales 128 → 16</span>
+      <div class="sizes">
+        <svg class="glyph" width="84" height="84"><use href="#frame-drawn"/></svg>
+        <svg class="glyph" width="40" height="40"><use href="#frame-drawn"/></svg>
+        <svg class="glyph" width="24" height="24"><use href="#frame-drawn"/></svg>
+        <svg class="glyph" width="16" height="16"><use href="#frame-drawn"/></svg>
+      </div>
+    </div>
+    <div class="cell"><span class="lab">Mono / favicon</span><div class="sizes"><svg class="glyph" width="64" height="64"><use href="#frame-drawn-mono"/></svg><svg class="glyph" width="20" height="20"><use href="#frame-drawn-mono"/></svg></div></div>
+    <div class="cell"><span class="lab">Reversed on dark</span><div class="dark"><span class="v">Night Market +12.00</span><svg class="glyph" width="20" height="20"><use href="#frame-drawn"/></svg></div></div>
+    <div class="cell"><span class="lab">Balance</span><div style="font-size:24px;font-weight:700;font-variant-numeric:tabular-nums;display:flex;align-items:center;gap:8px"><svg class="glyph" width="28" height="28"><use href="#frame-drawn"/></svg> 27.9</div></div>
+  </div>
+</div>
+
+</body>
+</html>

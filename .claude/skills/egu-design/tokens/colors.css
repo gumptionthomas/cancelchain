@@ -1,0 +1,72 @@
+/* ─────────────────────────────────────────────────────────────────────────
+   Extended Gumption Universe — COLOR TOKENS
+   Ported faithfully from gumption-hub's 2B2F skin (static/css/hub.css),
+   then extended with semantic aliases + a few derived tints for "movement".
+   The brand reads as a gold-leaf ledger on warm paper: civic, weighty,
+   archival. Green/red appear ONLY as support/opposition semantics.
+   ───────────────────────────────────────────────────────────────────────── */
+:root {
+  /* ── Gold — the brand spine (gold leaf, wax seals, ledger rules) ── */
+  --gold:        #d4a520;  /* primary brand gold */
+  --gold-dark:   #b8960c;  /* links, borders, pressed states */
+  --gold-light:  #e8c547;  /* highlights, hover lift, sheen */
+  --gold-deep:   #6b5608;  /* headings on paper, kickers */
+
+  /* ── Surface — warm paper & ink ── */
+  --paper:       #fbf8f0;  /* page background (unbleached parchment) */
+  --paper-card:  #ffffff;  /* raised card fill */
+  --ink:         #2a2620;  /* primary text */
+
+  /* ── Muted earth neutrals (captions, metadata, the chain pulse) ── */
+  --muted:       #6c6356;  /* secondary text / footer */
+  --muted-gold:  #9a8c6a;  /* ledger amounts, faint metadata */
+
+  /* ── Semantics — the ledger's two verdicts ── */
+  --support:     #3f8f4f;  /* commendation / "for" */
+  --oppose:      #9c4b3b;  /* grievance / "against" */
+  --support-bar: #7fae77;  /* softened bar fill on paper */
+  --oppose-bar:  #c98080;
+
+  /* ── Ledger / brand logo green (legacy Gumption "G") ── */
+  --gumption-green: #2f7d32;
+
+  /* ── Borders & rules (gold at low alpha — the engraved look) ── */
+  --rule-strong: rgba(184, 150, 12, 0.40);
+  --rule:        rgba(184, 150, 12, 0.35);
+  --rule-soft:   rgba(184, 150, 12, 0.16);
+  --rule-hair:   #e3dac3;  /* opaque hairline on white (ledger subject chip) */
+
+  /* ── Gold wash gradients (card glow, head bands) ── */
+  --wash-strong: rgba(212, 165, 32, 0.14);
+  --wash:        rgba(212, 165, 32, 0.10);
+  --wash-soft:   rgba(212, 165, 32, 0.03);
+
+  /* ── Secondary action (stone) ── */
+  --stone:       #6c6356;
+  --stone-dark:  #5d5549;
+  --stone-deep:  #4e473d;
+
+  /* ── Ticker — the dark marquee (high-contrast inversion) ── */
+  --ticker-bg:    #212529;
+  --ticker-sup:   #4caf50;
+  --ticker-opp:   #f44336;
+  --ticker-muted: #adb5bd;
+  --ticker-sep:   #495057;
+
+  /* ── Dark theme base (Bootstrap data-bs-theme="dark") ── */
+  --dark-bg:     #1a1d21;
+
+  /* ── Semantic aliases — prefer these in components ── */
+  --bg-page:        var(--paper);
+  --bg-card:        var(--paper-card);
+  --text-strong:    var(--ink);
+  --text-body:      var(--ink);
+  --text-muted:     var(--muted);
+  --text-faint:     var(--muted-gold);
+  --text-heading:   var(--gold-deep);
+  --link:           var(--gold-dark);
+  --link-hover:     var(--gold);
+  --border-card:    var(--rule);
+  --border-strong:  var(--gold-dark);
+  --focus-ring:     rgba(212, 165, 32, 0.25);
+}

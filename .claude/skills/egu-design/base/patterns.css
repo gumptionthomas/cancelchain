@@ -1,0 +1,150 @@
+/* ─────────────────────────────────────────────────────────────────────────
+   Extended Gumption Universe — BRAND PATTERNS
+   The recurring composite pieces of the 2B2F look, ported from hub.css and
+   given the new motion layer. Reusable by UI kits, slides, and components.
+   ───────────────────────────────────────────────────────────────────────── */
+
+/* ── StatCard tile (.gc-stat) — neutral base; the theme adds the gold wash ──
+   Base appearance is a plain Bootstrap-friendly card so <StatCard> looks right
+   in VANILLA mode; `.theme-2b2f .gc-stat` (explorer.css) upgrades it to gold. */
+.gc-stat {
+  border: 1px solid #dee2e6;
+  border-radius: var(--radius-card);
+  background: #fff;
+  padding: var(--space-4);
+  height: 100%;
+}
+.gc-stat .gc-stat-label {
+  font-family: var(--font-body);
+  font-weight: var(--fw-semibold);
+  font-size: var(--fs-kicker);
+  text-transform: uppercase;
+  letter-spacing: var(--ls-table);
+  color: var(--muted);
+}
+.gc-stat .gc-stat-value {
+  font-size: 1.75rem;
+  font-weight: var(--fw-bold);
+  color: #212529;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+  margin-top: 0.15rem;
+}
+.gc-stat .gc-stat-value .unit { font-size: var(--fs-sm); font-weight: var(--fw-regular); color: var(--muted); }
+
+/* ── Card: the gold-wash bloom card (egu-card / card.bg-light) ───────────── */
+.egu-card {
+  display: block;
+  padding: var(--space-5);
+  border: var(--bw-hair) solid var(--border-strong);
+  border-radius: var(--radius-card);
+  background: var(--glow-card), var(--paper);
+}
+.egu-card--teaser { border-style: dashed; opacity: 0.65; }
+.egu-card-title {
+  font-family: var(--font-display);
+  font-size: var(--fs-card-title);
+  color: var(--gold-deep);
+  letter-spacing: var(--ls-heading);
+  margin: 0 0 var(--space-1);
+}
+.egu-card-tagline {
+  font-family: var(--font-display);
+  color: var(--gold-dark);
+  letter-spacing: var(--ls-heading);
+  margin: 0 0 0.9rem;
+}
+.egu-card-blurb { color: var(--muted); margin: var(--space-2) 0; }
+
+/* ── Ledger / verify card (gc-card) — head band + engraved rows ─────────── */
+.gc-card {
+  border: var(--bw-hair) solid var(--gold-dark);
+  border-radius: var(--radius-card);
+  overflow: hidden;
+  background: var(--glow-card-strong), var(--paper);
+}
+.gc-card-head {
+  display: flex; align-items: center; gap: 0.8rem;
+  padding: var(--space-4) var(--space-6);
+  background: var(--band-head);
+  border-bottom: var(--bw-hair) solid var(--rule-strong);
+}
+.gc-card-head h2 {
+  color: var(--gold-deep); text-transform: uppercase;
+  letter-spacing: var(--ls-heading); margin: 0;
+}
+.gc-row { display: flex; gap: var(--space-4); padding: var(--space-3) var(--space-6);
+  border-bottom: var(--bw-hair) solid var(--rule-soft); }
+.gc-row:last-child { border-bottom: 0; }
+.gc-row .k {
+  font-family: var(--font-display); text-transform: uppercase;
+  letter-spacing: var(--ls-brand); color: var(--gold-deep);
+  width: 9rem; flex: none; font-size: var(--fs-kicker);
+}
+.gc-row .v { font-weight: var(--fw-semibold); }
+.gc-row .v .tn { font-variant-numeric: tabular-nums; }
+
+/* ── Wax seal ────────────────────────────────────────────────────────────
+   Neutral stone until verified, then gold + breathing pulse. */
+.seal-dot {
+  width: 2.4rem; height: 2.4rem; border-radius: var(--radius-pill); flex: none;
+  color: #fff; display: flex; align-items: center; justify-content: center;
+  font-size: 1.3rem;
+  background: radial-gradient(circle at 38% 32%, #cfc9bc, #a9a395 50%, #837d6f);
+  box-shadow: var(--seal-ring);
+}
+.seal-dot.verified {
+  background: radial-gradient(circle at 38% 32%, var(--gold-light), var(--gold) 50%, var(--gold-dark));
+  animation: egu-stamp var(--dur-slow) var(--ease-stamp) both;
+}
+.seal-dot.verified.pulsing { animation: egu-stamp var(--dur-slow) var(--ease-stamp) both, egu-seal-pulse 2.6s var(--ease-in-out) 0.6s infinite; }
+
+/* ── Great Ledger board — the support↔oppose tug-of-war ─────────────────── */
+.ledger-board { max-width: var(--w-ledger); margin: 0 auto var(--space-4); }
+.ledger-row { display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-2); }
+.ledger-half { flex: 1; display: flex; align-items: center; }
+.ledger-half:first-of-type .ledger-bar { margin-left: auto; }
+.ledger-bar {
+  height: 12px; border-radius: var(--radius); transform-origin: left center;
+  animation: egu-bar-grow var(--dur-slow) var(--ease-out) both;
+}
+.ledger-half:first-of-type .ledger-bar { transform-origin: right center; }
+.ledger-bar-sup { background: var(--support-bar); }
+.ledger-bar-opp { background: var(--oppose-bar); }
+.ledger-subject {
+  background: #fff; border: var(--bw-hair) solid var(--rule-hair);
+  border-radius: var(--radius-sm); padding: 0.15rem 0.6rem; min-width: 7rem;
+  text-align: center; font-weight: var(--fw-semibold); color: inherit; text-decoration: none;
+  transition: border-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
+}
+.ledger-subject:hover { border-color: var(--gold); box-shadow: var(--shadow-gold-glow); color: var(--ink); }
+.ledger-amt { font-size: var(--fs-xs); color: var(--muted-gold); min-width: 3rem; text-align: center; font-variant-numeric: tabular-nums; }
+.ledger-legend, .ledger-empty { color: var(--muted-gold); font-size: var(--fs-sm); }
+
+/* ── Stakes ticker — the dark marquee ───────────────────────────────────── */
+.stakes-ticker { overflow: hidden; background: var(--ticker-bg); color: #fff; padding: var(--space-2) 0; border-radius: var(--radius-sm); }
+.stakes-ticker-track { display: inline-block; white-space: nowrap; animation: egu-ticker var(--dur-ticker, 60s) linear infinite; }
+.stakes-ticker:hover .stakes-ticker-track { animation-play-state: paused; }
+.stakes-ticker .ticker-item { display: inline-block; padding: 0 1.1rem; font-size: var(--fs-sm); }
+.stakes-ticker .ticker-label { color: var(--ticker-muted); margin-right: 0.3rem; }
+.stakes-ticker .ticker-value { font-weight: var(--fw-semibold); }
+.stakes-ticker .ticker-sup { color: var(--ticker-sup); }
+.stakes-ticker .ticker-opp { color: var(--ticker-opp); }
+.stakes-ticker .ticker-who { color: var(--ticker-muted); margin-left: 0.35rem; }
+.stakes-ticker .ticker-sep { color: var(--ticker-sep); padding: 0 0.5rem; }
+
+/* ── Kind labels — uppercase Righteous in semantic color ────────────────── */
+.kind-opposition { color: var(--oppose); font-family: var(--font-display); text-transform: uppercase; }
+.kind-support    { color: var(--support); font-family: var(--font-display); text-transform: uppercase; }
+
+/* ── Chain pulse — the faint height/staked line ─────────────────────────── */
+.chain-pulse { font-size: var(--fs-sm); color: var(--muted); }
+.chain-pulse a {
+  font-family: var(--font-display); font-size: var(--fs-xs);
+  color: var(--gold-dark); text-transform: uppercase; letter-spacing: var(--ls-pulse);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .seal-dot.verified, .seal-dot.verified.pulsing, .ledger-bar { animation: none !important; }
+  .stakes-ticker-track { animation-duration: 0s; }
+}

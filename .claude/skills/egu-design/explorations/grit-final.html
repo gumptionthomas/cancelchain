@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GRIT glyph — final</title>
+<link rel="stylesheet" href="../styles.css">
+<style>
+  body { margin: 0; background: #e7e3d9; color: var(--ink); padding: 40px clamp(20px,5vw,64px) 80px; }
+  .wrap { max-width: 1180px; margin: 0 auto; }
+  h1 { font-family: var(--font-display); color: var(--gold-dark); text-transform: uppercase; letter-spacing: .04em; font-size: 1.9rem; margin: .25rem 0 .4rem; }
+  .intro { max-width: 62ch; color: var(--muted); margin: 0 0 28px; }
+  .sec { font-family: var(--font-display); text-transform: uppercase; letter-spacing: .06em; color: var(--gold-deep); font-size: .92rem; border-bottom: 2px solid var(--rule-strong); padding-bottom: 6px; margin: 30px 0 18px; }
+  .ctx { background:#fff; border-radius:14px; border:1px solid var(--rule-soft); box-shadow:0 1px 2px rgba(42,38,32,.06); padding:24px; display:grid; grid-template-columns: repeat(auto-fit, minmax(150px,1fr)); gap:22px; align-items:center; }
+  .cell { display:flex; flex-direction:column; align-items:center; gap:10px; text-align:center; }
+  .cell .lab { font-family: var(--font-mono); font-size:10px; color: var(--muted-gold); text-transform:uppercase; letter-spacing:.04em; }
+  .sizes { display:flex; align-items:flex-end; gap:14px; }
+  .dark { background: var(--ticker-bg); border-radius:10px; padding:14px 18px; display:flex; align-items:center; gap:10px; }
+  .dark .v { color: var(--ticker-sup); font-weight:600; font-size:13px; }
+  .hero { height: 240px; }
+  .cmp { display:flex; gap:30px; align-items:center; justify-content:center; }
+  .cmp figure { margin:0; display:flex; flex-direction:column; align-items:center; gap:8px; }
+  .cmp img { width:96px; height:96px; object-fit:contain; }
+  .glyph { display:inline-flex; vertical-align:middle; }
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <linearGradient id="face" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f5d76e"/><stop offset="1" stop-color="#d4a520"/></linearGradient>
+    <linearGradient id="edge" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e8c547"/><stop offset="1" stop-color="#8b6914"/></linearGradient>
+
+    <!-- FINAL: flat-top bevel + two-stroke torus G (chunk removed + horizontal tube) -->
+    <symbol id="grit" viewBox="0 0 140 140">
+      <polygon points="101,16 132,70 101,124 39,124 8,70 39,16" fill="url(#edge)"/>
+      <polygon points="101,16 132,70 101,124 39,124 8,70 39,16" fill="none" stroke="#6b5608" stroke-width="1.3" opacity=".5"/>
+      <polygon points="39,16 101,16 93,30 47,30" fill="#f3dd8a" opacity=".5"/>
+      <polygon points="93,30 116,70 93,110 47,110 24,70 47,30" fill="url(#face)"/>
+      <g stroke="#6b5608" stroke-width="1" opacity=".2">
+        <line x1="101" y1="16" x2="93" y2="30"/><line x1="132" y1="70" x2="116" y2="70"/><line x1="101" y1="124" x2="93" y2="110"/><line x1="39" y1="124" x2="47" y2="110"/><line x1="8" y1="70" x2="24" y2="70"/><line x1="39" y1="16" x2="47" y2="30"/>
+      </g>
+      <g fill="none" stroke="#6b5608" stroke-width="13" stroke-linecap="round">
+        <path d="M97 70 A27 27 0 1 1 89.09 50.91"/>
+        <path d="M97 70 L70 70"/>
+      </g>
+    </symbol>
+    <symbol id="grit-mono" viewBox="0 0 140 140">
+      <polygon points="101,16 132,70 101,124 39,124 8,70 39,16" fill="#b8960c"/>
+      <g fill="none" stroke="#fbf8f0" stroke-width="13" stroke-linecap="round">
+        <path d="M97 70 A27 27 0 1 1 89.09 50.91"/>
+        <path d="M97 70 L70 70"/>
+      </g>
+    </symbol>
+  </defs>
+</svg>
+
+<div class="wrap">
+  <p class="egu-kicker" style="margin:0">EGU brand · currency mark · final</p>
+  <h1>GRIT — the mark</h1>
+  <p class="intro">Two equal-radius strokes, matching the original logo’s construction: a torus with the upper-right chunk removed, plus a horizontal tube. Sized to float clear of the bevel. Below: the mark large, a size ramp to 16px, mono/favicon, on dark, and side-by-side with the original green “G”.</p>
+
+  <div class="sec">The mark</div>
+  <div class="ctx">
+    <div class="cell"><div class="hero"><svg width="220" height="220"><use href="#grit"/></svg></div></div>
+    <div class="cell">
+      <span class="lab">Scales 96 → 16</span>
+      <div class="sizes">
+        <svg class="glyph" width="96" height="96"><use href="#grit"/></svg>
+        <svg class="glyph" width="44" height="44"><use href="#grit"/></svg>
+        <svg class="glyph" width="28" height="28"><use href="#grit"/></svg>
+        <svg class="glyph" width="16" height="16"><use href="#grit"/></svg>
+      </div>
+    </div>
+  </div>
+
+  <div class="sec">Variants &amp; context</div>
+  <div class="ctx">
+    <div class="cell"><span class="lab">Mono / favicon</span><div class="sizes"><svg class="glyph" width="72" height="72"><use href="#grit-mono"/></svg><svg class="glyph" width="20" height="20"><use href="#grit-mono"/></svg></div></div>
+    <div class="cell"><span class="lab">Reversed on dark (ticker)</span><div class="dark"><span class="v">Night Market +12.00</span><svg class="glyph" width="22" height="22"><use href="#grit"/></svg></div></div>
+    <div class="cell"><span class="lab">Balance</span><div style="font-size:26px;font-weight:700;font-variant-numeric:tabular-nums;display:flex;align-items:center;gap:8px"><svg class="glyph" width="30" height="30"><use href="#grit"/></svg> 27.9</div></div>
+  </div>
+
+  <div class="sec">Beside the original</div>
+  <div class="ctx"><div class="cell" style="grid-column:1/-1">
+    <div class="cmp">
+      <figure><svg width="120" height="120"><use href="#grit"/></svg><figcaption class="lab">GRIT (new)</figcaption></figure>
+      <figure><img src="../assets/gumption-g.png" alt="Gumption G"><figcaption class="lab">Gumption G (origin)</figcaption></figure>
+    </div>
+  </div></div>
+</div>
+
+</body>
+</html>

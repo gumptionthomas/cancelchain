@@ -1,0 +1,48 @@
+<svg class="tbtf-logo" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 260" role="img" aria-label="Too Big To Fail">
+  <defs>
+    <linearGradient id="tbtf-g1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f5d76e"></stop><stop offset="100%" stop-color="#a07818"></stop>
+    </linearGradient>
+    <linearGradient id="tbtf-g2" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#d4a520"></stop><stop offset="100%" stop-color="#7a5a10"></stop>
+    </linearGradient>
+    <linearGradient id="tbtf-g3" x1="100%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#f5d76e"></stop><stop offset="100%" stop-color="#8b6914"></stop>
+    </linearGradient>
+    <linearGradient id="tbtf-text" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f5d76e"></stop><stop offset="100%" stop-color="#d4a520"></stop>
+    </linearGradient>
+  </defs>
+  <g transform="translate(125, 10) scale(1.5)">
+    <rect x="6" y="98" width="16" height="16" rx="2" fill="url(#tbtf-g2)" opacity="0.5"></rect>
+    <rect x="24" y="98" width="16" height="16" rx="2" fill="url(#tbtf-g1)" opacity="0.55"></rect>
+    <rect x="42" y="98" width="16" height="16" rx="2" fill="url(#tbtf-g2)" opacity="0.5"></rect>
+    <rect x="60" y="98" width="16" height="16" rx="2" fill="url(#tbtf-g1)" opacity="0.55"></rect>
+    <g opacity="0.5">
+      <rect x="78" y="98" width="11" height="13" rx="1.5" fill="url(#tbtf-g2)" transform="rotate(8, 86, 106) translate(3, 2)"></rect>
+      <rect x="78" y="97" width="6" height="5" rx="1" fill="url(#tbtf-g2)" transform="rotate(-3, 80, 99)"></rect>
+      <rect x="91" y="103" width="4" height="4" rx="0.8" fill="url(#tbtf-g2)" transform="rotate(15, 93, 105) translate(2, 1)" opacity="0.7"></rect>
+      <rect x="95" y="110" width="2.5" height="2.5" rx="0.5" fill="url(#tbtf-g2)" transform="rotate(25, 96, 111)" opacity="0.5"></rect>
+      <rect x="92" y="115" width="2" height="2" rx="0.5" fill="url(#tbtf-g2)" transform="rotate(-10, 93, 116)" opacity="0.35"></rect>
+      <rect x="97" y="116" width="1.5" height="1.5" rx="0.4" fill="url(#tbtf-g2)" opacity="0.25"></rect>
+    </g>
+    <rect x="6" y="80" width="16" height="16" rx="2" fill="url(#tbtf-g1)" opacity="0.6"></rect>
+    <rect x="24" y="80" width="16" height="16" rx="2" fill="url(#tbtf-g2)" opacity="0.65"></rect>
+    <rect x="42" y="80" width="16" height="16" rx="2" fill="url(#tbtf-g1)" opacity="0.6"></rect>
+    <rect x="60" y="80" width="16" height="16" rx="2" fill="url(#tbtf-g2)" opacity="0.65"></rect>
+    <rect x="78" y="80" width="16" height="16" rx="2" fill="url(#tbtf-g1)" opacity="0.6"></rect>
+    <rect x="15" y="62" width="16" height="16" rx="2" fill="url(#tbtf-g2)" opacity="0.7"></rect>
+    <rect x="33" y="62" width="16" height="16" rx="2" fill="url(#tbtf-g3)" opacity="0.75"></rect>
+    <rect x="51" y="62" width="16" height="16" rx="2" fill="url(#tbtf-g2)" opacity="0.7"></rect>
+    <rect x="69" y="62" width="16" height="16" rx="2" fill="url(#tbtf-g3)" opacity="0.75"></rect>
+    <rect x="24" y="44" width="16" height="16" rx="2" fill="url(#tbtf-g1)" opacity="0.8"></rect>
+    <rect x="42" y="44" width="16" height="16" rx="2" fill="url(#tbtf-g2)" opacity="0.85"></rect>
+    <rect x="60" y="44" width="16" height="16" rx="2" fill="url(#tbtf-g1)" opacity="0.8"></rect>
+    <rect x="33" y="26" width="16" height="16" rx="2" fill="url(#tbtf-g3)" opacity="0.9"></rect>
+    <rect x="51" y="26" width="16" height="16" rx="2" fill="url(#tbtf-g1)" opacity="0.9"></rect>
+    <rect x="42" y="8" width="16" height="16" rx="2" fill="#f5d76e"></rect>
+    <rect x="42" y="8" width="16" height="16" rx="2" fill="none" stroke="#f5d76e" stroke-width="1" opacity="0.4"></rect>
+  </g>
+  <text x="200" y="230" text-anchor="middle" font-family="Righteous, sans-serif" font-size="36" font-weight="400" fill="url(#tbtf-text)" letter-spacing="4">TOO BIG TO FAIL</text>
+  <line x1="100" y1="242" x2="300" y2="242" stroke="url(#tbtf-text)" stroke-width="1.5" opacity="0.4"></line>
+</svg>

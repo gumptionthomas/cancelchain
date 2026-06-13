@@ -1,0 +1,43 @@
+<!-- @dsCard group="Components" viewport="700x360" name="Brand — marks" subtitle="Hero logo, wordmark lockup, and the GRIT glyph in use" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<link rel="stylesheet" href="../../styles.css">
+<style>
+  body { margin: 0; padding: 22px 24px; background: var(--paper); }
+  .lbl { font-family: var(--font-mono); font-size: 10px; color: var(--muted-gold); text-transform: uppercase; letter-spacing: .04em; margin: 0 0 8px; }
+  .row { display: flex; align-items: center; gap: 26px; flex-wrap: wrap; }
+  .grp { display: flex; flex-direction: column; gap: 8px; }
+  .sizes { display: flex; align-items: flex-end; gap: 12px; }
+  .dark { background: var(--ticker-bg); border-radius: 8px; padding: 10px 14px; display: flex; align-items: center; gap: 8px; }
+  .dark .v { color: var(--ticker-sup); font-weight: 600; font-size: 13px; }
+  .bal { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; display: flex; align-items: center; gap: 8px; color: var(--ink); }
+  .btn { display:inline-flex; align-items:center; gap:7px; background:linear-gradient(135deg,var(--gold),var(--gold-dark)); color:#fff; border:1px solid var(--gold-dark); border-radius:6px; padding:8px 14px; font-weight:600; font-size:14px; }
+</style>
+</head>
+<body>
+  <div id="root"></div>
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+  <script src="../../_ds_bundle.js"></script>
+  <script type="text/babel">
+    const { Grit, HeroLogo, WordmarkLockup } = window.ExtendedGumptionUniverseDesignSystem_a80556;
+    function Demo() {
+      return (
+        <div class="row">
+          <div className="grp"><span className="lbl">Hero logo</span><HeroLogo size={92}/></div>
+          <div className="grp"><span className="lbl">Wordmark lockup</span><WordmarkLockup size={52}/></div>
+          <div className="grp"><span className="lbl">Sizes 80 → 16</span><div className="sizes"><Grit size={80}/><Grit size={40}/><Grit size={24}/><Grit size={16}/></div></div>
+          <div className="grp"><span className="lbl">Mono</span><div className="sizes"><Grit size={48} mono/><Grit size={20} mono/></div></div>
+          <div className="grp"><span className="lbl">On dark</span><div className="dark"><span className="v">Night Market +12.00</span><Grit size={20}/></div></div>
+          <div className="grp"><span className="lbl">Balance</span><div className="bal"><Grit size={26}/> 27.9</div></div>
+          <div className="grp"><span className="lbl">CTA</span><span className="btn">Earn <Grit size={18}/> GRIT →</span></div>
+        </div>
+      );
+    }
+    ReactDOM.createRoot(document.getElementById('root')).render(<Demo />);
+  </script>
+</body>
+</html>

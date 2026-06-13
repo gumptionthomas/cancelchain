@@ -1,0 +1,46 @@
+<!-- @dsCard group="Gumption Hub" viewport="1000x760" name="Landing — the EGU front door" subtitle="Hero, the Great Ledger, stakes ticker, member cards — with motion" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Extended Gumption Universe</title>
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon-hub.svg">
+<link rel="stylesheet" href="../../styles.css">
+<style>
+  body { margin: 0; background: var(--paper); }
+  .egu-hero-float { animation: egu-float 5s var(--ease-in-out) infinite; }
+  @keyframes egu-float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-7px); } }
+  @media (prefers-reduced-motion: reduce) { .egu-hero-float { animation: none; } }
+  a:hover { color: var(--gold); }
+</style>
+</head>
+<body class="theme-2b2f">
+  <div id="root"></div>
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+  <script src="../../_ds_bundle.js"></script>
+  <script type="text/babel" src="screens.jsx"></script>
+  <script type="text/babel">
+    function App() {
+      const [view, setView] = React.useState('landing');
+      const onNav = (v) => { setView(v); window.scrollTo({ top: 0 }); };
+      return (
+        <div>
+          <NavBar onNav={onNav} />
+          {view === 'landing' && <Landing key="l" onNav={onNav} />}
+          {view === 'proof' && <ProofCard key="p" onNav={onNav} />}
+          {view === 'about' && <About key="a" onNav={onNav} />}
+          {view === 'contact' && <Contact key="c" onNav={onNav} />}
+          {view === 'bind' && <Bind key="b" onNav={onNav} />}
+          {view === 'you' && <You key="y" onNav={onNav} />}
+          {view === 'onboarding' && <Onboarding key="o" onNav={onNav} />}
+          <Footer onNav={onNav} />
+        </div>
+      );
+    }
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>

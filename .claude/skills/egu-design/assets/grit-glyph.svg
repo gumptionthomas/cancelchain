@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 140 140" role="img" aria-label="GRIT">
+  <defs>
+    <linearGradient id="gritFace" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f5d76e"></stop><stop offset="1" stop-color="#d4a520"></stop></linearGradient>
+    <linearGradient id="gritEdge" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e8c547"></stop><stop offset="1" stop-color="#8b6914"></stop></linearGradient>
+  </defs>
+  <polygon points="101,16 132,70 101,124 39,124 8,70 39,16" fill="url(#gritEdge)"></polygon>
+  <polygon points="101,16 132,70 101,124 39,124 8,70 39,16" fill="none" stroke="#6b5608" stroke-width="1.3" opacity=".5"></polygon>
+  <polygon points="39,16 101,16 93,30 47,30" fill="#f3dd8a" opacity=".5"></polygon>
+  <polygon points="93,30 116,70 93,110 47,110 24,70 47,30" fill="url(#gritFace)"></polygon>
+  <g stroke="#6b5608" stroke-width="1" opacity=".2">
+    <line x1="101" y1="16" x2="93" y2="30"></line><line x1="132" y1="70" x2="116" y2="70"></line><line x1="101" y1="124" x2="93" y2="110"></line><line x1="39" y1="124" x2="47" y2="110"></line><line x1="8" y1="70" x2="24" y2="70"></line><line x1="39" y1="16" x2="47" y2="30"></line>
+  </g>
+  <g fill="none" stroke="#6b5608" stroke-width="13" stroke-linecap="round">
+    <path d="M97 70 A27 27 0 1 1 89.09 50.91"></path>
+    <path d="M97 70 L70 70"></path>
+  </g>
+</svg>

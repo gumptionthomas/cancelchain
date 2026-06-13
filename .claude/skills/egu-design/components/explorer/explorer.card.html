@@ -1,0 +1,52 @@
+<!-- @dsCard group="Components" viewport="860x320" name="Explorer — Stats, Net stance, Outflow" subtitle="Chain stat tiles, net-verdict text, outflow kind badges" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<link rel="stylesheet" href="../../styles.css">
+<style> body { margin: 0; padding: 20px 24px; background: var(--paper); } .lbl { font-family: var(--font-mono); font-size: 10px; color: var(--muted); margin: 0 0 8px; } .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; } .row { display: flex; gap: 22px; align-items: center; margin-top: 20px; flex-wrap: wrap; } </style>
+</head>
+<body class="theme-2b2f">
+  <div id="root"></div>
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+  <script src="../../_ds_bundle.js"></script>
+  <script type="text/babel">
+    const { StatCard, NetStance, OutflowBadge } = window.ExtendedGumptionUniverseDesignSystem_a80556;
+    function Demo() {
+      return (
+        <div>
+          <p className="lbl">StatCard — chain headline metrics</p>
+          <div className="stats">
+            <StatCard label="Height" value="184,213" />
+            <StatCard label="Transactions" value="9,604" />
+            <StatCard label="Total staked" value="2,794" unit="grains" />
+            <StatCard label="Subjects" value="38" />
+          </div>
+          <div className="row">
+            <div>
+              <p className="lbl">NetStance</p>
+              <div style={{fontSize:16, display:'flex', flexDirection:'column', gap:4}}>
+                <NetStance support={520} opposition={180} />
+                <NetStance support={90} opposition={340} />
+                <NetStance support={40} opposition={40} />
+              </div>
+            </div>
+            <div>
+              <p className="lbl">OutflowBadge</p>
+              <div style={{display:'flex', gap:8, flexWrap:'wrap'}}>
+                <OutflowBadge kind="support" />
+                <OutflowBadge kind="opposition" />
+                <OutflowBadge kind="rescind" />
+                <OutflowBadge kind="transfer" />
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+    ReactDOM.createRoot(document.getElementById('root')).render(<Demo />);
+  </script>
+</body>
+</html>

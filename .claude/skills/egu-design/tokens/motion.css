@@ -1,0 +1,100 @@
+/* ─────────────────────────────────────────────────────────────────────────
+   Extended Gumption Universe — MOTION SYSTEM
+   The brief: the 2B2F look is faithful but "flat and static." This layer adds
+   the flare & movement — a small, reusable vocabulary of gold-leaf shimmer,
+   seal stamping, ledger-bar fills, and a continuous stakes ticker. Motion is
+   purposeful (value moving across the ledger), never decorative noise.
+   All effects respect prefers-reduced-motion.
+   ───────────────────────────────────────────────────────────────────────── */
+:root {
+  /* ── Durations ── */
+  --dur-fast:    140ms; /* @kind other */
+  --dur-base:    260ms; /* @kind other */
+  --dur-slow:    600ms; /* @kind other */
+  --dur-sheen:   2400ms; /* @kind other */
+  --dur-ticker:  60s; /* @kind other */
+
+  /* ── Easing ── */
+  --ease-out:    cubic-bezier(0.16, 1, 0.3, 1); /* @kind other */
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1); /* @kind other */
+  --ease-stamp:  cubic-bezier(0.34, 1.56, 0.64, 1); /* @kind other */
+  --ease-linear: linear; /* @kind other */
+}
+
+/* ── Keyframes — the shared motion library ─────────────────────────────── */
+
+/* Gold sheen: a diagonal light sweep across gold surfaces (buttons, seals,
+   card titles). Drive with a ::before/::after overlay. */
+@keyframes egu-sheen {
+  0%   { transform: translateX(-120%) skewX(-18deg); }
+  60%  { transform: translateX(220%)  skewX(-18deg); }
+  100% { transform: translateX(220%)  skewX(-18deg); }
+}
+
+/* Seal stamp: the wax seal thunks down and settles — used when a proof is
+   verified. Overshoot via --ease-stamp. */
+@keyframes egu-stamp {
+  0%   { transform: scale(0.4) rotate(-12deg); opacity: 0; }
+  60%  { transform: scale(1.08) rotate(2deg);  opacity: 1; }
+  100% { transform: scale(1) rotate(0);        opacity: 1; }
+}
+
+/* Seal pulse: a slow breathing glow once verified (gold ring). */
+@keyframes egu-seal-pulse {
+  0%, 100% { box-shadow: var(--seal-ring), 0 0 0 0 rgba(212, 165, 32, 0.45); }
+  50%      { box-shadow: var(--seal-ring), 0 0 0 8px rgba(212, 165, 32, 0); }
+}
+
+/* Ledger bar fill: bars grow from zero to their share width. Set the target
+   width inline; animate the transform origin instead for cheapness. */
+@keyframes egu-bar-grow {
+  from { transform: scaleX(0); }
+  to   { transform: scaleX(1); }
+}
+
+/* Rise-in: cards & rows enter from slightly below with a fade. */
+@keyframes egu-rise {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Coin flip: GRIT amount counters / token glyph. */
+@keyframes egu-coin-flip {
+  0%   { transform: rotateY(0); }
+  100% { transform: rotateY(360deg); }
+}
+
+/* Mint ring: a gold ring expands outward and fades when GRIT is struck. */
+@keyframes egu-mint-ring {
+  0%   { transform: scale(0.5); opacity: 0.7; }
+  100% { transform: scale(1.9); opacity: 0; }
+}
+
+/* Mint spark: a small accent dot drifts up and fades (minted GRIT sparkle). */
+@keyframes egu-mint-spark {
+  0%   { transform: translateY(0) scale(1);   opacity: 0; }
+  20%  { opacity: 1; }
+  100% { transform: translateY(-22px) scale(0.4); opacity: 0; }
+}
+
+/* Ticker scroll: the marquee (ported from hub.css, kept here as the canon). */
+@keyframes egu-ticker {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-25%); }
+}
+
+/* ── Utility classes any consumer can apply ───────────────────────────── */
+.egu-anim-rise   { animation: egu-rise var(--dur-base) var(--ease-out) both; }
+.egu-anim-stamp  { animation: egu-stamp var(--dur-slow) var(--ease-stamp) both; }
+.egu-anim-pulse  { animation: egu-seal-pulse 2.6s var(--ease-in-out) infinite; }
+
+/* Hover lift — the standard interactive affordance for cards & buttons. */
+.egu-lift { transition: transform var(--dur-fast) var(--ease-out),
+                        box-shadow var(--dur-fast) var(--ease-out); }
+.egu-lift:hover { transform: translateY(-2px); box-shadow: var(--shadow-lift); }
+.egu-lift:active { transform: translateY(0); }
+
+@media (prefers-reduced-motion: reduce) {
+  .egu-anim-rise, .egu-anim-stamp, .egu-anim-pulse,
+  .egu-lift, .egu-lift:hover { animation: none !important; transition: none !important; transform: none !important; }
+}

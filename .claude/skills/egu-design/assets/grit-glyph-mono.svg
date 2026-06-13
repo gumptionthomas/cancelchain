@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 140 140" role="img" aria-label="GRIT">
+  <polygon points="101,16 132,70 101,124 39,124 8,70 39,16" fill="#b8960c"></polygon>
+  <g fill="none" stroke="#fbf8f0" stroke-width="13" stroke-linecap="round">
+    <path d="M97 70 A27 27 0 1 1 89.09 50.91"></path>
+    <path d="M97 70 L70 70"></path>
+  </g>
+</svg>

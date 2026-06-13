@@ -1,0 +1,47 @@
+<!-- @dsCard group="Brand" viewport="700x260" name="Hero logo — the EGU constellation" subtitle="Green Gumption core + orbiting gold satellites (animated)" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<link rel="stylesheet" href="../styles.css">
+<style>
+  body { margin: 0; padding: 24px 26px; background: var(--paper); display: flex; align-items: center; gap: 36px; }
+  .wm { font-family: var(--font-display); color: var(--gold-dark); text-transform: uppercase; letter-spacing: .04em; font-size: 1.5rem; line-height: 1.12; }
+  .txt { max-width: 32ch; color: var(--muted); font-size: 13px; line-height: 1.55; }
+  .txt b { color: var(--gold-deep); }
+</style>
+</head>
+<body>
+  <svg width="150" height="150" viewBox="0 0 200 200" role="img" aria-label="The Extended Gumption Universe">
+    <defs>
+      <radialGradient id="g" cx="50%" cy="50%" r="50%">
+        <stop offset="0" stop-color="#d4a520" stop-opacity=".22"/>
+        <stop offset="60%" stop-color="#d4a520" stop-opacity=".05"/>
+        <stop offset="100%" stop-color="#d4a520" stop-opacity="0"/>
+      </radialGradient>
+    </defs>
+    <circle cx="100" cy="100" r="70" fill="url(#g)"/>
+    <circle cx="100" cy="100" r="74" fill="none" stroke="#d4a520" stroke-width="1.25" opacity=".3"/>
+    <circle cx="100" cy="100" r="56" fill="none" stroke="#d4a520" stroke-width="1" opacity=".18"/>
+    <g>
+      <animateTransform attributeName="transform" attributeType="XML" type="rotate" from="0 100 100" to="360 100 100" dur="26s" repeatCount="indefinite"/>
+      <circle cx="100" cy="26" r="8" fill="#e8c547"/>
+      <circle cx="164" cy="137" r="6.5" fill="#d4a520"/>
+      <circle cx="36" cy="137" r="5.5" fill="#b8960c"/>
+    </g>
+    <g>
+      <animateTransform attributeName="transform" attributeType="XML" type="rotate" from="360 100 100" to="0 100 100" dur="38s" repeatCount="indefinite"/>
+      <circle cx="156" cy="100" r="3.5" fill="#d4a520" opacity=".8"/>
+      <circle cx="44" cy="100" r="3" fill="#e8c547" opacity=".7"/>
+    </g>
+    <g fill="none" stroke="#2f7d32" stroke-width="16" stroke-linecap="round">
+      <path d="M134 100 A34 34 0 1 1 124.04 75.96"/>
+      <path d="M134 100 L100 100"/>
+    </g>
+  </svg>
+  <div>
+    <div class="wm">The Extended<br>Gumption Universe</div>
+    <p class="txt"><b>Hero mark.</b> The Gumption “G” core (chain green) holds steady while a constellation of gold satellites orbits — the universe of EGU apps bound by GRIT. <code>&lt;HeroLogo&gt;</code> animates inline; <code>egu-hero.svg</code> is the static version.</p>
+  </div>
+</body>
+</html>

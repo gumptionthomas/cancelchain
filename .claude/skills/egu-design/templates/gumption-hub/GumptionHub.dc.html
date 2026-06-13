@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<!-- @template name="Gumption Hub Page" description="A themed EGU page (2B2F gold skin): nav, hero, the Great Ledger board, stakes ticker, and a member card." -->
+<helmet>
+  <link rel="icon" type="image/svg+xml" href="../../assets/favicon-hub.svg">
+  <script src="./ds-base.js"></script>
+</helmet>
+<div class="theme-2b2f" style="min-height:100vh;background:var(--paper);font-family:var(--font-body);color:var(--ink)">
+  <nav style="display:flex;align-items:center;gap:.4rem;padding:.6rem 1.5rem;border-bottom:1px solid var(--rule-soft)">
+    <a href="#" style="text-decoration:none;margin-right:.6rem"><x-import component-from-global-scope="ExtendedGumptionUniverseDesignSystem_a80556.WordmarkLockup" size="30" wordmark-size="16" wordmark="Gumption" animate="{{ false }}" hint-size="150px,30px"></x-import></a>
+    <a href="#" style="color:var(--ink);text-decoration:none;padding:.4rem .6rem;font-size:.9rem">Chain</a>
+    <a href="#" style="margin-left:auto;color:var(--gold-dark);font-weight:600;text-decoration:none;font-size:.9rem">@you</a>
+  </nav>
+
+  <div style="max-width:64rem;margin:0 auto;padding:0 1rem">
+    <div style="text-align:center;padding:1.5rem 0 2rem">
+      <x-import component-from-global-scope="ExtendedGumptionUniverseDesignSystem_a80556.HeroLogo" size="150" hint-size="150px,150px"></x-import>
+      <h1 style="font-family:var(--font-display);color:var(--gold-dark);letter-spacing:.04em;margin:.5rem 0 0;font-size:2.6rem;text-transform:uppercase;line-height:1.1">The Extended Gumption Universe</h1>
+    </div>
+
+    <section class="egu-card" style="border-color:var(--gold-dark)">
+      <p class="egu-kicker">EGU member &middot; the chain</p>
+      <h2 class="egu-card-title">GumptionChain</h2>
+      <p class="egu-card-tagline">The Great Ledger of Grievances &amp; Commendations</p>
+      <x-import component-from-global-scope="ExtendedGumptionUniverseDesignSystem_a80556.LedgerBoard" rows="{{ ledgerRows }}" hint-size="100%,180px"></x-import>
+      <div style="margin:1rem 0">
+        <x-import component-from-global-scope="ExtendedGumptionUniverseDesignSystem_a80556.Ticker" items="{{ tickerItems }}" duration="{{ tickerDuration }}" hint-size="100%,44px"></x-import>
+      </div>
+      <p class="chain-pulse" style="text-align:center;margin:0;display:flex;align-items:center;justify-content:center;gap:.35rem;flex-wrap:wrap">height 184,213 &middot; 27.9 <x-import component-from-global-scope="ExtendedGumptionUniverseDesignSystem_a80556.Grit" size="16" hint-size="16px,16px"></x-import> staked &middot; 5 subjects &middot; <a href="#">full chain &rarr;</a></p>
+    </section>
+
+    <section class="egu-card" style="text-align:center;margin-top:1rem;border-color:var(--gold-dark)">
+      <p class="egu-kicker">EGU member &middot; the game</p>
+      <img src="../../assets/tbtf-logo.svg" alt="Too Big To Fail" style="width:13rem;max-width:70%;margin:.25rem auto 0;display:block">
+      <p class="egu-card-blurb">The classic board game Acquire &mdash; reimagined online. Free to play, right in your browser.</p>
+      <a href="#" style="color:var(--gold-dark);font-weight:600;text-decoration:none;display:inline-flex;align-items:center;gap:.3rem;justify-content:center">play &rarr; earn <x-import component-from-global-scope="ExtendedGumptionUniverseDesignSystem_a80556.Grit" size="18" hint-size="18px,18px"></x-import> GRIT &rarr;</a>
+    </section>
+
+    <footer style="text-align:center;padding:2.5rem 0 1.5rem;color:var(--muted);font-size:.85rem">
+      <div style="display:flex;justify-content:center;margin-bottom:1rem"><x-import component-from-global-scope="ExtendedGumptionUniverseDesignSystem_a80556.WordmarkLockup" orientation="stacked" size="64" wordmark-size="18" hint-size="140px,120px"></x-import></div>
+      <a href="#" style="color:var(--gold-dark)">gumption.com</a> &middot; <a href="#" style="color:var(--gold-dark)">about</a> &middot; <a href="#" style="color:var(--gold-dark)">contact</a>
+    </footer>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      ledgerRows: [
+        { subject: 'Local Library', support: 4.2, opposition: 1.6 },
+        { subject: 'City Budget', support: 8.5, opposition: 6.2 },
+        { subject: 'Night Market', support: 12.0, opposition: 0.5 },
+      ],
+      tickerItems: [
+        { kind: 'support', subject: 'Local Library', amount: '4.20', signer: '@thomas', age: '2m' },
+        { kind: 'opposition', subject: 'Toll Road', amount: '3.10', signer: '@dana', age: '9m' },
+        { kind: 'support', subject: 'Night Market', amount: '12.00', signer: '@rey', age: '1h' },
+      ],
+      tickerDuration: 42,
+    };
+  }
+}
+</script>
+</body>
+</html>

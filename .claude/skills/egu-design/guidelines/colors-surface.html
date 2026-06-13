@@ -1,0 +1,24 @@
+<!-- @dsCard group="Colors" viewport="700x150" name="Surface & ink" subtitle="Warm parchment, white card, dark ink" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<link rel="stylesheet" href="../styles.css">
+<style>
+  body { margin: 0; padding: 18px; }
+  .row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .sw { border-radius: var(--radius); overflow: hidden; border: 1px solid var(--rule); }
+  .chip { height: 70px; }
+  .meta { padding: 7px 9px; background: var(--paper-card); }
+  .name { font-family: var(--font-display); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--gold-deep); }
+  .hex { font-family: var(--font-mono); font-size: 11px; color: var(--muted); }
+</style>
+</head>
+<body class="theme-2b2f">
+  <div class="row">
+    <div class="sw"><div class="chip" style="background:var(--paper)"></div><div class="meta"><div class="name">paper</div><div class="hex">#fbf8f0</div></div></div>
+    <div class="sw"><div class="chip" style="background:var(--paper-card);box-shadow:inset 0 0 0 1px var(--rule-soft)"></div><div class="meta"><div class="name">paper-card</div><div class="hex">#ffffff</div></div></div>
+    <div class="sw"><div class="chip" style="background:var(--ink)"></div><div class="meta"><div class="name">ink</div><div class="hex">#2a2620</div></div></div>
+  </div>
+</body>
+</html>

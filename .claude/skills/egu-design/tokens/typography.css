@@ -1,0 +1,42 @@
+/* ─────────────────────────────────────────────────────────────────────────
+   Extended Gumption Universe — TYPOGRAPHY TOKENS
+   Two faces, ported from the live site:
+   • Righteous — geometric retro display. ALL headings, kickers, brand,
+     table headers, the seal labels. Always uppercase + tracked.
+   • Inter     — body, UI, controls. Weights 400/600/700.
+   • Mono      — addresses, txids, hashes (system mono stack).
+   ───────────────────────────────────────────────────────────────────────── */
+:root {
+  /* ── Families ── */
+  --font-display: 'Righteous', system-ui, sans-serif;
+  --font-body:    'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono:    ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+
+  /* ── Weights ── */
+  --fw-regular:   400; /* @kind font */
+  --fw-semibold:  600; /* @kind font */
+  --fw-bold:      700; /* @kind font */
+
+  /* ── Type scale (rem, 16px base) ── */
+  --fs-hero:      2.6rem;   /* EGU landing hero title */
+  --fs-h1:        2rem;
+  --fs-h2:        1.5rem;
+  --fs-card-title:1.25rem;  /* .egu-card-title */
+  --fs-lead:      1.15rem;
+  --fs-body:      1rem;
+  --fs-sm:        0.85rem;   /* metadata, ticker items, chain pulse */
+  --fs-xs:        0.8rem;    /* kickers, table headers */
+  --fs-kicker:    0.78rem;   /* gc-row key, member kicker */
+
+  /* ── Line heights ── */
+  --lh-tight:     1.15; /* @kind font */
+  --lh-snug:      1.35; /* @kind font */
+  --lh-body:      1.6;  /* @kind font */
+
+  /* ── Letter-spacing — Righteous is ALWAYS tracked & uppercase ── */
+  --ls-brand:     0.08em; /* @kind font */
+  --ls-kicker:    0.12em; /* @kind font */
+  --ls-heading:   0.04em; /* @kind font */
+  --ls-table:     0.06em; /* @kind font */
+  --ls-pulse:     0.10em; /* @kind font */
+}

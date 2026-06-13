@@ -1,0 +1,26 @@
+<!-- @dsCard group="Colors" viewport="700x150" name="Neutrals & ticker palette" subtitle="Earth muted tones + the dark marquee inversion" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<link rel="stylesheet" href="../styles.css">
+<style>
+  body { margin: 0; padding: 18px; }
+  .row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
+  .sw { border-radius: var(--radius); overflow: hidden; border: 1px solid var(--rule); }
+  .chip { height: 64px; }
+  .meta { padding: 6px 8px; background: var(--paper-card); }
+  .name { font-family: var(--font-display); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--gold-deep); }
+  .hex { font-family: var(--font-mono); font-size: 10px; color: var(--muted); }
+</style>
+</head>
+<body class="theme-2b2f">
+  <div class="row">
+    <div class="sw"><div class="chip" style="background:var(--muted)"></div><div class="meta"><div class="name">muted</div><div class="hex">#6c6356</div></div></div>
+    <div class="sw"><div class="chip" style="background:var(--muted-gold)"></div><div class="meta"><div class="name">muted-gold</div><div class="hex">#9a8c6a</div></div></div>
+    <div class="sw"><div class="chip" style="background:var(--ticker-bg)"></div><div class="meta"><div class="name">ticker-bg</div><div class="hex">#212529</div></div></div>
+    <div class="sw"><div class="chip" style="background:var(--ticker-sup)"></div><div class="meta"><div class="name">ticker-sup</div><div class="hex">#4caf50</div></div></div>
+    <div class="sw"><div class="chip" style="background:var(--ticker-opp)"></div><div class="meta"><div class="name">ticker-opp</div><div class="hex">#f44336</div></div></div>
+  </div>
+</body>
+</html>

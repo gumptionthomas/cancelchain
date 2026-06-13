@@ -1,0 +1,10 @@
+/* ─────────────────────────────────────────────────────────────────────────
+   Extended Gumption Universe — FONTS
+   The live site loads Righteous + Inter from Google Fonts (they are
+   intentionally NOT vendored in the repo — see static/fonts/README.md).
+   We mirror that here via the Google Fonts CSS API, so consumers get the
+   exact same faces with zero binaries to ship.
+
+   Righteous → display / headings / brand.   Inter → body / UI.
+   ───────────────────────────────────────────────────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Righteous&display=swap');

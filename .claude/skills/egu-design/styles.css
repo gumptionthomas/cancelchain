@@ -1,0 +1,13 @@
+/* ═════════════════════════════════════════════════════════════════════════
+   Extended Gumption Universe — Design System
+   Global entry point. Consumers link THIS file only.
+   Import order: fonts → tokens → base → patterns.
+   ═════════════════════════════════════════════════════════════════════════ */
+@import url('tokens/fonts.css');
+@import url('tokens/colors.css');
+@import url('tokens/typography.css');
+@import url('tokens/spacing.css');
+@import url('tokens/motion.css');
+@import url('base/elements.css');
+@import url('base/patterns.css');
+@import url('base/explorer.css');

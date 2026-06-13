@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GRIT glyph — directions</title>
+<link rel="stylesheet" href="../styles.css">
+<style>
+  body { margin: 0; background: #e7e3d9; color: var(--ink); padding: 40px clamp(20px, 5vw, 64px) 72px; }
+  .head { max-width: 1180px; margin: 0 auto 32px; }
+  .head h1 { font-family: var(--font-display); color: var(--gold-dark); text-transform: uppercase; letter-spacing: .04em; font-size: 2rem; margin: .25rem 0 .5rem; }
+  .head p { max-width: 60ch; color: var(--muted); margin: 0; }
+  .grid { max-width: 1180px; margin: 0 auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 22px; }
+  .card { background: #fff; border-radius: 14px; border: 1px solid var(--rule-soft); box-shadow: 0 1px 2px rgba(42,38,32,.06); padding: 20px 20px 22px; display: flex; flex-direction: column; }
+  .num { font-family: var(--font-mono); font-size: 11px; color: var(--muted-gold); }
+  .name { font-family: var(--font-display); text-transform: uppercase; letter-spacing: .04em; color: var(--gold-deep); font-size: 1.05rem; margin: 2px 0 0; }
+  .desc { font-size: 13px; line-height: 1.5; color: var(--muted); margin: 6px 0 14px; min-height: 56px; }
+  .stage { background: var(--paper); border: 1px solid var(--rule-soft); border-radius: 10px; height: 188px; display: flex; align-items: center; justify-content: center; }
+  .uses { display: flex; gap: 10px; margin-top: 12px; }
+  .use { flex: 1; border: 1px solid var(--rule-soft); border-radius: 8px; padding: 9px 11px; display: flex; flex-direction: column; gap: 6px; }
+  .use .lab { font-family: var(--font-mono); font-size: 9.5px; color: var(--muted-gold); text-transform: uppercase; letter-spacing: .04em; }
+  .inline-row { display: flex; align-items: center; gap: 6px; font-size: 14px; }
+  .inline-row.bal { font-weight: 700; font-variant-numeric: tabular-nums; }
+  .tick { background: var(--ticker-bg); border-radius: 5px; padding: 6px 9px; display: flex; align-items: center; gap: 6px; }
+  .tick .v { color: var(--ticker-sup); font-weight: 600; font-size: 12.5px; }
+  .glyph-sm { display: inline-flex; vertical-align: middle; }
+</style>
+</head>
+<body>
+
+<!-- ════ master defs: gradients + glyph symbols (referenced by <use>) ════ -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <linearGradient id="face" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f5d76e"/><stop offset="1" stop-color="#d4a520"/></linearGradient>
+    <linearGradient id="edge" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e8c547"/><stop offset="1" stop-color="#8b6914"/></linearGradient>
+    <radialGradient id="wax" cx="38%" cy="32%" r="80%"><stop offset="0" stop-color="#f3dd8a"/><stop offset=".5" stop-color="#d4a520"/><stop offset="1" stop-color="#8b6914"/></radialGradient>
+    <linearGradient id="letter" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e8c547"/><stop offset="1" stop-color="#b8960c"/></linearGradient>
+
+    <!-- 1 · Sovereign coin -->
+    <symbol id="g-coin" viewBox="0 0 140 140">
+      <circle cx="70" cy="70" r="63" fill="url(#edge)"/>
+      <circle cx="70" cy="70" r="63" fill="none" stroke="#6b5608" stroke-width="5" stroke-dasharray="2.2 3.4" opacity=".55"/>
+      <circle cx="70" cy="70" r="53" fill="url(#face)"/>
+      <circle cx="70" cy="70" r="53" fill="none" stroke="#6b5608" stroke-width="1.4" opacity=".4"/>
+      <circle cx="70" cy="70" r="47" fill="none" stroke="#fff" stroke-width="1" opacity=".28"/>
+      <text x="70" y="74" text-anchor="middle" dominant-baseline="central" font-family="Righteous, sans-serif" font-size="58" fill="#6b5608">G</text>
+    </symbol>
+
+    <!-- 2 · Wax seal medal -->
+    <symbol id="g-seal" viewBox="0 0 140 140">
+      <path d="M52 108 L42 134 L58 124 L66 134 L70 106 Z" fill="#8b6914"/>
+      <path d="M88 108 L98 134 L82 124 L74 134 L70 106 Z" fill="#a07818"/>
+      <circle cx="70" cy="66" r="58" fill="url(#wax)"/>
+      <circle cx="70" cy="66" r="58" fill="none" stroke="#6b5608" stroke-width="1.2" opacity=".4"/>
+      <circle cx="70" cy="66" r="51" fill="none" stroke="#fff" stroke-width="2" opacity=".3"/>
+      <text x="70" y="70" text-anchor="middle" dominant-baseline="central" font-family="Righteous, sans-serif" font-size="56" fill="#5a4806" opacity=".45" transform="translate(0,2)">G</text>
+      <text x="70" y="70" text-anchor="middle" dominant-baseline="central" font-family="Righteous, sans-serif" font-size="56" fill="#f3dd8a" opacity=".55" transform="translate(0,-1.5)">G</text>
+      <text x="70" y="70" text-anchor="middle" dominant-baseline="central" font-family="Righteous, sans-serif" font-size="56" fill="#bf9c14">G</text>
+    </symbol>
+
+    <!-- 3 · Struck monogram (inline currency mark) -->
+    <symbol id="g-mono" viewBox="0 0 140 140">
+      <text x="70" y="74" text-anchor="middle" dominant-baseline="central" font-family="Righteous, sans-serif" font-size="118" fill="url(#letter)">G</text>
+      <rect x="30" y="64" width="80" height="9" rx="2" fill="#6b5608"/>
+      <rect x="30" y="64" width="80" height="9" rx="2" fill="url(#face)" opacity=".25"/>
+    </symbol>
+
+    <!-- 4 · Grain of gumption -->
+    <symbol id="g-grain" viewBox="0 0 140 140">
+      <path d="M70 16 C100 44 100 96 70 124 C40 96 40 44 70 16 Z" fill="url(#face)" stroke="#6b5608" stroke-width="1.4"/>
+      <line x1="70" y1="26" x2="70" y2="114" stroke="#6b5608" stroke-width="2" opacity=".55"/>
+      <path d="M70 42 C82 48 86 54 88 62 M70 42 C58 48 54 54 52 62" fill="none" stroke="#6b5608" stroke-width="1.6" opacity=".5"/>
+      <path d="M70 62 C82 68 86 74 88 82 M70 62 C58 68 54 74 52 82" fill="none" stroke="#6b5608" stroke-width="1.6" opacity=".5"/>
+      <path d="M70 82 C80 88 84 92 86 100 M70 82 C60 88 56 92 54 100" fill="none" stroke="#6b5608" stroke-width="1.6" opacity=".5"/>
+    </symbol>
+
+    <!-- 5 · Ledger chip -->
+    <symbol id="g-chip" viewBox="0 0 140 140">
+      <rect x="14" y="14" width="112" height="112" rx="26" fill="url(#face)" stroke="#6b5608" stroke-width="1.6"/>
+      <rect x="22" y="22" width="96" height="96" rx="20" fill="none" stroke="#fff" stroke-width="1" opacity=".3"/>
+      <text x="70" y="64" text-anchor="middle" dominant-baseline="central" font-family="Righteous, sans-serif" font-size="56" fill="#6b5608">G</text>
+      <line x1="44" y1="98" x2="96" y2="98" stroke="#6b5608" stroke-width="2.4" opacity=".7"/>
+    </symbol>
+
+    <!-- 6 · On-chain hex token -->
+    <symbol id="g-hex" viewBox="0 0 140 140">
+      <polygon points="70,10 122,40 122,100 70,130 18,100 18,40" fill="url(#edge)"/>
+      <polygon points="70,10 122,40 122,100 70,130 18,100 18,40" fill="none" stroke="#6b5608" stroke-width="1.4" opacity=".5"/>
+      <polygon points="70,24 110,47 110,93 70,116 30,93 30,47" fill="url(#face)"/>
+      <polygon points="70,24 110,47 110,93 70,116 30,93 30,47" fill="none" stroke="#fff" stroke-width="1" opacity=".28"/>
+      <text x="70" y="74" text-anchor="middle" dominant-baseline="central" font-family="Righteous, sans-serif" font-size="52" fill="#6b5608">G</text>
+    </symbol>
+  </defs>
+</svg>
+
+<div class="head">
+  <p class="egu-kicker" style="margin:0">EGU brand · currency mark</p>
+  <h1>The GRIT glyph — six directions</h1>
+  <p>GRIT is the unit of value on GumptionChain (100 grains = 1 grit). The mark should read as <em>struck currency</em> — gold, civic, archival — and survive small in the ticker and a wallet balance. Each card shows the mark large, then inline in a ticker chip and a balance line. Tell me which direction to refine.</p>
+</div>
+
+<div class="grid">
+  <!-- 1 -->
+  <div class="card">
+    <span class="num">01</span><h2 class="name">Sovereign Coin</h2>
+    <p class="desc">A struck, reeded coin with the Righteous “G”. The most literal “currency” read — mint, treasury, value you can hold.</p>
+    <div class="stage"><svg width="148" height="148"><use href="#g-coin"/></svg></div>
+    <div class="uses">
+      <div class="use"><span class="lab">In the ticker</span><div class="tick"><span class="v">Night Market +12.00</span><svg class="glyph-sm" width="18" height="18"><use href="#g-coin"/></svg></div></div>
+      <div class="use"><span class="lab">Balance</span><div class="inline-row bal"><svg class="glyph-sm" width="22" height="22"><use href="#g-coin"/></svg> 27.9</div></div>
+    </div>
+  </div>
+
+  <!-- 2 -->
+  <div class="card">
+    <span class="num">02</span><h2 class="name">Wax Seal Medal</h2>
+    <p class="desc">The verification seal elevated into currency: a glossy gold wax disc with an embossed “G” and ribbon tails. Ties value directly to the trust/seal motif.</p>
+    <div class="stage"><svg width="148" height="148"><use href="#g-seal"/></svg></div>
+    <div class="uses">
+      <div class="use"><span class="lab">In the ticker</span><div class="tick"><span class="v">Night Market +12.00</span><svg class="glyph-sm" width="18" height="18"><use href="#g-seal"/></svg></div></div>
+      <div class="use"><span class="lab">Balance</span><div class="inline-row bal"><svg class="glyph-sm" width="22" height="22"><use href="#g-seal"/></svg> 27.9</div></div>
+    </div>
+  </div>
+
+  <!-- 3 -->
+  <div class="card">
+    <span class="num">03</span><h2 class="name">Struck Monogram</h2>
+    <p class="desc">A pure typographic mark: the Righteous “G” crossed by a struck bar, the way ₿ or ₵ mark a currency. Lightweight, scales to a favicon, sits inline like a symbol.</p>
+    <div class="stage"><svg width="148" height="148"><use href="#g-mono"/></svg></div>
+    <div class="uses">
+      <div class="use"><span class="lab">In the ticker</span><div class="tick"><span class="v">Night Market +12.00</span><svg class="glyph-sm" width="16" height="16"><use href="#g-mono"/></svg></div></div>
+      <div class="use"><span class="lab">Balance</span><div class="inline-row bal"><svg class="glyph-sm" width="20" height="20"><use href="#g-mono"/></svg> 27.9</div></div>
+    </div>
+  </div>
+
+  <!-- 4 -->
+  <div class="card">
+    <span class="num">04</span><h2 class="name">Grain of Gumption</h2>
+    <p class="desc">Leans on the literal unit — a single gold grain (gumption is measured in grains). Agrarian, humble, distinctive; the least “coin-like” of the set.</p>
+    <div class="stage"><svg width="148" height="148"><use href="#g-grain"/></svg></div>
+    <div class="uses">
+      <div class="use"><span class="lab">In the ticker</span><div class="tick"><span class="v">Night Market +12.00</span><svg class="glyph-sm" width="16" height="16"><use href="#g-grain"/></svg></div></div>
+      <div class="use"><span class="lab">Balance</span><div class="inline-row bal"><svg class="glyph-sm" width="20" height="20"><use href="#g-grain"/></svg> 27.9</div></div>
+    </div>
+  </div>
+
+  <!-- 5 -->
+  <div class="card">
+    <span class="num">05</span><h2 class="name">Ledger Chip</h2>
+    <p class="desc">A gold rounded-square token echoing the system’s card radius and the ledger subject chip, with a “G” over a ruled baseline. The most native to the existing UI language.</p>
+    <div class="stage"><svg width="148" height="148"><use href="#g-chip"/></svg></div>
+    <div class="uses">
+      <div class="use"><span class="lab">In the ticker</span><div class="tick"><span class="v">Night Market +12.00</span><svg class="glyph-sm" width="17" height="17"><use href="#g-chip"/></svg></div></div>
+      <div class="use"><span class="lab">Balance</span><div class="inline-row bal"><svg class="glyph-sm" width="21" height="21"><use href="#g-chip"/></svg> 27.9</div></div>
+    </div>
+  </div>
+
+  <!-- 6 -->
+  <div class="card">
+    <span class="num">06</span><h2 class="name">On-Chain Hex Token</h2>
+    <p class="desc">A struck hexagonal token — the blockchain nod. Distinct silhouette that reads even tiny, signalling “this is the on-chain unit”.</p>
+    <div class="stage"><svg width="148" height="148"><use href="#g-hex"/></svg></div>
+    <div class="uses">
+      <div class="use"><span class="lab">In the ticker</span><div class="tick"><span class="v">Night Market +12.00</span><svg class="glyph-sm" width="17" height="17"><use href="#g-hex"/></svg></div></div>
+      <div class="use"><span class="lab">Balance</span><div class="inline-row bal"><svg class="glyph-sm" width="21" height="21"><use href="#g-hex"/></svg> 27.9</div></div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

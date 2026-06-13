@@ -1,0 +1,176 @@
+/* ─────────────────────────────────────────────────────────────────────────
+   Extended Gumption Universe — THE HUB'S SKIN FOR BASE'S BOOTSTRAP MARKUP
+   ───────────────────────────────────────────────────────────────────────────
+   This is NOT how vanilla gumptionchain looks. Base gumptionchain renders
+   STOCK Bootstrap 5 (default blue/grey). This file is the *hub's* additive
+   reskin of that markup — exactly the "Base chain pages under the 2B2F skin"
+   override block in the live hub.css. It is therefore gated under the
+   `.theme-2b2f` scope: a plain node (no theme class) keeps its native
+   Bootstrap look; the hub (theme on) repaints the same markup in 2B2F.
+
+   Every selector below is `.theme-2b2f …` so themeing base is OPT-IN and the
+   `.text-success`/`.text-danger`/badge remaps only bite inside the hub skin.
+
+   "Movement" here is compositional, not animated: engraved gold rules under
+   table heads and card titles, a gold hairline frame, and a warm hover tint —
+   visual interest that holds perfectly still.
+   ───────────────────────────────────────────────────────────────────────── */
+
+/* ── Cards ─────────────────────────────────────────────────────────────── */
+.theme-2b2f .card {
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-card);
+}
+.theme-2b2f .card.bg-light {
+  background:
+    radial-gradient(120% 90% at 50% 0%, var(--wash), transparent 60%),
+    #fff !important;
+}
+.theme-2b2f .card .card-title {
+  font-family: var(--font-display);
+  font-weight: var(--fw-regular);
+  color: var(--gold-deep);
+  text-transform: uppercase;
+  letter-spacing: var(--ls-heading);
+}
+/* Static flair: a short engraved gold rule under a card/section title. */
+.theme-2b2f .card .card-title.h5,
+.theme-2b2f .gc-titlerule {
+  position: relative;
+  padding-bottom: 0.45rem;
+}
+.theme-2b2f .card .card-title.h5::after,
+.theme-2b2f .gc-titlerule::after {
+  content: "";
+  position: absolute;
+  left: 0; bottom: 0;
+  width: 2.25rem; height: 2px;
+  background: linear-gradient(90deg, var(--gold), transparent);
+  border-radius: 2px;
+}
+
+/* ── Tables ────────────────────────────────────────────────────────────── */
+.theme-2b2f .table thead th {
+  font-family: var(--font-display);
+  font-weight: var(--fw-regular);
+  font-size: var(--fs-xs);
+  color: var(--gold-deep);
+  text-transform: uppercase;
+  letter-spacing: var(--ls-table);
+  border-bottom: 2px solid var(--rule-strong);
+}
+.theme-2b2f .table a { color: var(--ink); text-decoration: none; }
+.theme-2b2f .table a:hover { color: var(--gold-dark); }
+.theme-2b2f .table tbody tr.clickable:hover { background: rgba(212, 165, 32, 0.07); }
+
+/* ── Pagination ────────────────────────────────────────────────────────── */
+/* Style Bootstrap's pagination directly (no --bs-* variable overrides). */
+.theme-2b2f .pagination .page-link { color: var(--gold-dark); }
+.theme-2b2f .pagination .page-link:hover { color: var(--gold-deep); }
+.theme-2b2f .pagination .page-item.active .page-link {
+  background-color: var(--gold);
+  border-color: var(--gold-dark);
+  color: #fff;
+}
+.theme-2b2f .pagination .page-link:focus {
+  color: var(--gold-deep);
+  box-shadow: 0 0 0 0.25rem var(--focus-ring);
+}
+
+/* ── Buttons (Bootstrap variants) ──────────────────────────────────────── */
+.theme-2b2f .btn-primary {
+  background-color: var(--gold);
+  border-color: var(--gold-dark);
+  color: #fff;
+}
+.theme-2b2f .btn-primary:hover,
+.theme-2b2f .btn-primary:focus-visible {
+  background-color: var(--gold-dark);
+  border-color: var(--gold-deep);
+  color: #fff;
+}
+.theme-2b2f .btn-primary:active {
+  background-color: var(--gold-dark);
+  border-color: var(--gold-deep);
+}
+.theme-2b2f .btn-outline-primary {
+  color: var(--gold-dark);
+  border-color: var(--gold);
+}
+.theme-2b2f .btn-outline-primary:hover,
+.theme-2b2f .btn-outline-primary:focus-visible {
+  background-color: var(--gold);
+  border-color: var(--gold-dark);
+  color: #fff;
+}
+.theme-2b2f .btn-outline-primary:active {
+  background-color: var(--gold-dark);
+  border-color: var(--gold-deep);
+  color: #fff;
+}
+.theme-2b2f .btn-secondary {
+  background-color: var(--stone);
+  border-color: var(--stone-dark);
+  color: #fff;
+}
+.theme-2b2f .btn-secondary:hover,
+.theme-2b2f .btn-secondary:focus-visible {
+  background-color: var(--stone-dark);
+  border-color: var(--stone-deep);
+  color: #fff;
+}
+.theme-2b2f .btn-secondary:active {
+  background-color: var(--stone-dark);
+  border-color: var(--stone-deep);
+}
+
+/* ── Forms ─────────────────────────────────────────────────────────────── */
+.theme-2b2f .form-control:focus,
+.theme-2b2f .form-select:focus {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 0.25rem var(--focus-ring);
+}
+
+/* ── Dropdown (nav Chain menu) ─────────────────────────────────────────── */
+.theme-2b2f .dropdown-menu { border-color: var(--rule-strong); }
+.theme-2b2f .dropdown-item:active { background-color: var(--gold); }
+
+/* ── Semantic text + outflow badges ────────────────────────────────────── */
+/* Remap Bootstrap's success/danger to the ledger's reserved meanings — ONLY
+   under the hub skin, so vanilla pages keep Bootstrap's stock green/red. */
+.theme-2b2f .text-success { color: var(--support) !important; }
+.theme-2b2f .text-danger  { color: var(--oppose) !important; }
+.theme-2b2f .badge.bg-success   { background-color: var(--support) !important; }
+.theme-2b2f .badge.bg-danger    { background-color: var(--oppose) !important; }
+.theme-2b2f .badge.bg-warning   { background-color: var(--gold) !important; color: var(--ink) !important; }
+.theme-2b2f .badge.bg-secondary { background-color: var(--stone) !important; }
+
+/* ── Explorer stat tile — theme UPGRADE of the neutral .gc-stat base ────── */
+/* (base structural styling lives ungated in patterns.css so StatCard also
+   looks right in vanilla mode; here we add the gold wash + Righteous label.) */
+.theme-2b2f .gc-stat {
+  border-color: var(--rule);
+  background:
+    radial-gradient(120% 90% at 50% 0%, var(--wash), transparent 60%),
+    #fff;
+}
+.theme-2b2f .gc-stat .gc-stat-label {
+  font-family: var(--font-display);
+  font-weight: var(--fw-regular);
+  color: var(--gold-deep);
+}
+.theme-2b2f .gc-stat .gc-stat-value { color: var(--ink); }
+
+/* ── Navbar + footer for the themed shell ──────────────────────────────── */
+.theme-2b2f .gc-navbar {
+  display: flex; align-items: center; gap: 0.25rem; flex-wrap: wrap;
+  padding: 0.5rem 1.5rem;
+  border-bottom: 1px solid var(--rule-soft);
+}
+.theme-2b2f .gc-navbar .gc-nav-brand {
+  font-family: var(--font-display); text-transform: uppercase;
+  letter-spacing: var(--ls-brand); color: var(--gold); margin-right: 0.75rem;
+}
+.theme-2b2f .gc-navbar a { color: var(--ink); text-decoration: none; padding: 0.4rem 0.6rem; font-size: var(--fs-sm); }
+.theme-2b2f .gc-navbar a:hover { color: var(--gold-dark); }
+.theme-2b2f .gc-footer { text-align: center; padding: 1.5rem 0; color: var(--muted); font-size: var(--fs-sm); }

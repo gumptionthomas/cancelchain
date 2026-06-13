@@ -1,0 +1,68 @@
+/* ─────────────────────────────────────────────────────────────────────────
+   Extended Gumption Universe — BASE ELEMENTS
+   ───────────────────────────────────────────────────────────────────────────
+   TWO VISUAL MODES, ONE VOICE.
+
+   • VANILLA (base gumptionchain): link styles.css and add NO theme class. You
+     get a tiny global reset + the shared tokens, and otherwise STOCK Bootstrap.
+     The brand presence is content-level only (voice, vocabulary, support=green
+     / oppose=red semantics) — exactly how a plain node looks.
+
+   • HUB-THEMED (gumption-hub): add `class="theme-2b2f"` to <body> (or a wrapper)
+     and the gold/paper 2B2F foundations paint on top — Righteous headings, gold
+     links, paper ground. The explorer skin (explorer.css) is likewise gated on
+     this scope, so themeing base is opt-in, never forced.
+
+   Opt-in utility classes (.egu-brand, .egu-kicker, .mono) work in either mode.
+   ───────────────────────────────────────────────────────────────────────── */
+
+/* ── Global, theme-agnostic (safe for vanilla Bootstrap pages) ──────────── */
+body { margin: 0; }
+.mono, code.mono, .font-mono { font-family: var(--font-mono); }
+
+/* Opt-in brand utilities — available in any mode, but only when you ask. */
+.egu-brand {
+  font-family: var(--font-display);
+  text-transform: uppercase;
+  letter-spacing: var(--ls-brand);
+  color: var(--gold);
+}
+.egu-kicker {
+  font-family: var(--font-display);
+  font-size: var(--fs-kicker);
+  color: var(--gold-deep);
+  text-transform: uppercase;
+  letter-spacing: var(--ls-kicker);
+  margin: 0 0 var(--space-1);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   THE 2B2F THEME SCOPE — every gold visual foundation lives under here.
+   Put `theme-2b2f` on <body> or any wrapper to switch the hub skin on.
+   ═══════════════════════════════════════════════════════════════════════════ */
+.theme-2b2f {
+  min-height: 100vh;
+  font-family: var(--font-body);
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  background: var(--bg-page);
+  color: var(--text-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+.theme-2b2f h1, .theme-2b2f h2, .theme-2b2f h3,
+.theme-2b2f h4, .theme-2b2f h5, .theme-2b2f h6 {
+  font-family: var(--font-display);
+  font-weight: var(--fw-regular);
+  color: var(--text-heading);
+  line-height: var(--lh-tight);
+}
+
+.theme-2b2f a { color: var(--link); text-decoration: none; }
+.theme-2b2f a:hover { color: var(--link-hover); }
+
+.theme-2b2f code, .theme-2b2f kbd, .theme-2b2f samp { font-family: var(--font-mono); }
+
+.theme-2b2f ::selection { background: var(--wash-strong); color: var(--ink); }
+
+.theme-2b2f hr { border: 0; border-top: var(--bw-hair) solid var(--rule-soft); }

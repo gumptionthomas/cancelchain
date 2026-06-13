@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GRIT glyph — hex refinement</title>
+<link rel="stylesheet" href="../styles.css">
+<style>
+  body { margin: 0; background: #e7e3d9; color: var(--ink); padding: 40px clamp(20px,5vw,64px) 80px; }
+  .wrap { max-width: 1180px; margin: 0 auto; }
+  h1 { font-family: var(--font-display); color: var(--gold-dark); text-transform: uppercase; letter-spacing: .04em; font-size: 1.9rem; margin: .25rem 0 .4rem; }
+  .intro { max-width: 62ch; color: var(--muted); margin: 0 0 30px; }
+  .sec { font-family: var(--font-display); text-transform: uppercase; letter-spacing: .06em; color: var(--gold-deep); font-size: .92rem; border-bottom: 2px solid var(--rule-strong); padding-bottom: 6px; margin: 34px 0 18px; }
+  .row { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 18px; }
+  .card { background: #fff; border-radius: 14px; border: 1px solid var(--rule-soft); box-shadow: 0 1px 2px rgba(42,38,32,.06); padding: 18px; }
+  .card .nm { font-family: var(--font-display); text-transform: uppercase; letter-spacing: .03em; color: var(--gold-deep); font-size: .9rem; }
+  .card .dc { font-size: 12px; color: var(--muted); margin: 4px 0 14px; line-height: 1.45; min-height: 50px; }
+  .stage { background: var(--paper); border: 1px solid var(--rule-soft); border-radius: 10px; height: 168px; display: flex; align-items: center; justify-content: center; }
+  .reco { box-shadow: 0 0 0 2px var(--gold), 0 6px 20px rgba(107,86,8,.16); }
+  .reco .nm::after { content: " ★ recommended"; color: var(--gold-dark); font-size: 10px; }
+
+  /* context strip */
+  .ctx { background:#fff; border-radius:14px; border:1px solid var(--rule-soft); box-shadow:0 1px 2px rgba(42,38,32,.06); padding:22px; display:grid; grid-template-columns: repeat(auto-fit, minmax(150px,1fr)); gap:20px; align-items:center; }
+  .cell { display:flex; flex-direction:column; align-items:center; gap:8px; text-align:center; }
+  .cell .lab { font-family: var(--font-mono); font-size:10px; color: var(--muted-gold); text-transform:uppercase; letter-spacing:.04em; }
+  .sizes { display:flex; align-items:flex-end; gap:14px; }
+  .dark { background: var(--ticker-bg); border-radius:10px; padding:14px 18px; display:flex; align-items:center; gap:10px; }
+  .dark .v { color: var(--ticker-sup); font-weight:600; font-size:13px; }
+  .balance { font-size:24px; font-weight:700; font-variant-numeric:tabular-nums; display:flex; align-items:center; gap:8px; color: var(--ink); }
+  .btn { display:inline-flex; align-items:center; gap:8px; background:linear-gradient(135deg,var(--gold),var(--gold-dark)); color:#fff; border:1px solid var(--gold-dark); border-radius:6px; padding:9px 16px; font-weight:600; font-size:14px; }
+  .glyph { display:inline-flex; vertical-align:middle; }
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <linearGradient id="face" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f5d76e"/><stop offset="1" stop-color="#d4a520"/></linearGradient>
+    <linearGradient id="edge" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e8c547"/><stop offset="1" stop-color="#8b6914"/></linearGradient>
+    <linearGradient id="letter" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f3dd8a"/><stop offset="1" stop-color="#b8960c"/></linearGradient>
+
+    <!-- A · Clean bevel, FLAT-top -->
+    <symbol id="hex-flat" viewBox="0 0 140 140">
+      <polygon points="101,16 132,70 101,124 39,124 8,70 39,16" fill="url(#edge)"/>
+      <polygon points="101,16 132,70 101,124 39,124 8,70 39,16" fill="none" stroke="#6b5608" stroke-width="1.3" opacity=".5"/>
+      <polygon points="39,16 101,16 93,30 47,30" fill="#f3dd8a" opacity=".5"/>
+      <polygon points="93,30 116,70 93,110 47,110 24,70 47,30" fill="url(#face)"/>
+      <g stroke="#6b5608" stroke-width="1" opacity=".22">
+        <line x1="101" y1="16" x2="93" y2="30"/><line x1="132" y1="70" x2="116" y2="70"/><line x1="101" y1="124" x2="93" y2="110"/><line x1="39" y1="124" x2="47" y2="110"/><line x1="8" y1="70" x2="24" y2="70"/><line x1="39" y1="16" x2="47" y2="30"/>
+      </g>
+      <text x="70" y="73" text-anchor="middle" dominant-baseline="central" font-family="Righteous, sans-serif" font-size="50" fill="#6b5608">G</text>
+    </symbol>
+
+    <!-- B · Clean bevel, POINTY-top -->
+    <symbol id="hex-pointy" viewBox="0 0 140 140">
+      <polygon points="70,8 124,40 124,100 70,132 16,100 16,40" fill="url(#edge)"/>
+      <polygon points="70,8 124,40 124,100 70,132 16,100 16,40" fill="none" stroke="#6b5608" stroke-width="1.3" opacity=".5"/>
+      <polygon points="70,8 124,40 108,49 70,27 32,49 16,40" fill="#f3dd8a" opacity=".5"/>
+      <polygon points="70,26 110,49 110,91 70,114 30,91 30,49" fill="url(#face)"/>
+      <g stroke="#6b5608" stroke-width="1" opacity=".22">
+        <line x1="70" y1="8" x2="70" y2="26"/><line x1="124" y1="40" x2="110" y2="49"/><line x1="124" y1="100" x2="110" y2="91"/><line x1="70" y1="132" x2="70" y2="114"/><line x1="16" y1="100" x2="30" y2="91"/><line x1="16" y1="40" x2="30" y2="49"/>
+      </g>
+      <text x="70" y="73" text-anchor="middle" dominant-baseline="central" font-family="Righteous, sans-serif" font-size="50" fill="#6b5608">G</text>
+    </symbol>
+
+    <!-- C · Reeded-edge hex (struck-coin milling) -->
+    <symbol id="hex-reeded" viewBox="0 0 140 140">
+      <polygon points="101,16 132,70 101,124 39,124 8,70 39,16" fill="url(#edge)"/>
+      <polygon points="101,16 132,70 101,124 39,124 8,70 39,16" fill="none" stroke="#6b5608" stroke-width="6" stroke-dasharray="2.4 3.4" opacity=".5"/>
+      <polygon points="92,32 114,70 92,108 48,108 26,70 48,32" fill="url(#face)"/>
+      <polygon points="92,32 114,70 92,108 48,108 26,70 48,32" fill="none" stroke="#fff" stroke-width="1" opacity=".3"/>
+      <text x="70" y="73" text-anchor="middle" dominant-baseline="central" font-family="Righteous, sans-serif" font-size="48" fill="#6b5608">G</text>
+    </symbol>
+
+    <!-- D · Struck monogram inside bevel hex -->
+    <symbol id="hex-struck" viewBox="0 0 140 140">
+      <polygon points="101,16 132,70 101,124 39,124 8,70 39,16" fill="url(#edge)"/>
+      <polygon points="39,16 101,16 93,30 47,30" fill="#f3dd8a" opacity=".5"/>
+      <polygon points="93,30 116,70 93,110 47,110 24,70 47,30" fill="url(#face)"/>
+      <text x="70" y="74" text-anchor="middle" dominant-baseline="central" font-family="Righteous, sans-serif" font-size="56" fill="#6b5608">G</text>
+      <rect x="42" y="66" width="56" height="6.5" rx="1.5" fill="#6b5608"/>
+    </symbol>
+
+    <!-- mono (single-tone, knockout G) for stamps / favicon -->
+    <symbol id="hex-mono" viewBox="0 0 140 140">
+      <polygon points="101,16 132,70 101,124 39,124 8,70 39,16" fill="#b8960c"/>
+      <text x="70" y="73" text-anchor="middle" dominant-baseline="central" font-family="Righteous, sans-serif" font-size="52" fill="#fbf8f0">G</text>
+    </symbol>
+  </defs>
+</svg>
+
+<div class="wrap">
+  <p class="egu-kicker" style="margin:0">EGU brand · currency mark · refinement</p>
+  <h1>GRIT — the hex token, refined</h1>
+  <p class="intro">Iterating on direction 06. Comparing orientation, edge treatment, and the inner mark. My pick is the <strong>flat-top clean bevel</strong> — it reads as a struck, faceted metal token, stacks neatly, and the flat top gives the “G” a stable shelf. Pick a row and I’ll lock it as the final mark.</p>
+
+  <div class="sec">A · Treatments</div>
+  <div class="row">
+    <div class="card reco">
+      <div class="nm">Flat-top bevel</div>
+      <div class="dc">Chamfered facets, flat top &amp; bottom. The most “struck token” read; stable, premium.</div>
+      <div class="stage"><svg width="138" height="138"><use href="#hex-flat"/></svg></div>
+    </div>
+    <div class="card">
+      <div class="nm">Pointy-top bevel</div>
+      <div class="dc">Same bevel rotated to points top/bottom. More gem-like and energetic; tiles in a honeycomb.</div>
+      <div class="stage"><svg width="138" height="138"><use href="#hex-pointy"/></svg></div>
+    </div>
+    <div class="card">
+      <div class="nm">Reeded edge</div>
+      <div class="dc">Milling ticks on the border — hex silhouette with the coin’s struck-edge texture.</div>
+      <div class="stage"><svg width="138" height="138"><use href="#hex-reeded"/></svg></div>
+    </div>
+    <div class="card">
+      <div class="nm">Struck monogram</div>
+      <div class="dc">The “G” crossed by a currency bar inside the bevel — most overtly “a unit of money”.</div>
+      <div class="stage"><svg width="138" height="138"><use href="#hex-struck"/></svg></div>
+    </div>
+  </div>
+
+  <div class="sec">B · The front-runner in context  <span style="font-family:var(--font-body);text-transform:none;letter-spacing:0;color:var(--muted);font-weight:400">— flat-top bevel</span></div>
+  <div class="ctx">
+    <div class="cell">
+      <span class="lab">Scales 128 → 16</span>
+      <div class="sizes">
+        <svg class="glyph" width="84" height="84"><use href="#hex-flat"/></svg>
+        <svg class="glyph" width="40" height="40"><use href="#hex-flat"/></svg>
+        <svg class="glyph" width="24" height="24"><use href="#hex-flat"/></svg>
+        <svg class="glyph" width="16" height="16"><use href="#hex-flat"/></svg>
+      </div>
+    </div>
+    <div class="cell">
+      <span class="lab">Mono / favicon</span>
+      <div class="sizes"><svg class="glyph" width="64" height="64"><use href="#hex-mono"/></svg><svg class="glyph" width="20" height="20"><use href="#hex-mono"/></svg></div>
+    </div>
+    <div class="cell">
+      <span class="lab">Reversed on dark (ticker)</span>
+      <div class="dark"><span class="v">Night Market +12.00</span><svg class="glyph" width="20" height="20"><use href="#hex-flat"/></svg></div>
+    </div>
+  </div>
+  <div class="ctx" style="margin-top:18px">
+    <div class="cell"><span class="lab">Wallet balance</span><div class="balance"><svg class="glyph" width="28" height="28"><use href="#hex-flat"/></svg> 27.9 <span style="font-size:13px;font-weight:400;color:var(--muted)">grit</span></div></div>
+    <div class="cell"><span class="lab">CTA button</span><span class="btn">Earn <svg class="glyph" width="18" height="18"><use href="#hex-flat"/></svg> GRIT →</span></div>
+    <div class="cell"><span class="lab">Inline in text</span><div style="font-size:14px;color:var(--ink)">You staked 4.20 <svg class="glyph" width="16" height="16"><use href="#hex-flat"/></svg> in support.</div></div>
+  </div>
+</div>
+
+</body>
+</html>

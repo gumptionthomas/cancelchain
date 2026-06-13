@@ -1,0 +1,26 @@
+<!-- @dsCard group="Spacing" viewport="700x170" name="Radii & elevation" subtitle="10px cards, gold-wash glow, soft lift shadow" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<link rel="stylesheet" href="../styles.css">
+<style>
+  body { margin: 0; padding: 20px 24px; background: var(--paper); }
+  .row { display: flex; gap: 18px; align-items: center; }
+  .box { width: 120px; height: 80px; background: var(--paper-card); display: flex; align-items: flex-end; padding: 8px; }
+  .l { font-family: var(--font-mono); font-size: 10px; color: var(--muted); }
+  .a { border: 1px solid var(--rule); border-radius: var(--radius-sm); }
+  .b { border: 1px solid var(--gold-dark); border-radius: var(--radius-card); background: var(--glow-card), var(--paper); }
+  .c { border-radius: var(--radius-card); box-shadow: var(--shadow-lift); }
+  .d { border-radius: var(--radius-pill); width: 80px; height: 80px; box-shadow: var(--shadow-gold-glow); background: radial-gradient(circle at 38% 32%, var(--gold-light), var(--gold) 50%, var(--gold-dark)); }
+</style>
+</head>
+<body class="theme-2b2f">
+  <div class="row">
+    <div class="box a"><span class="l">radius-sm 4px</span></div>
+    <div class="box b"><span class="l">card 10px + glow</span></div>
+    <div class="box c"><span class="l">lift shadow</span></div>
+    <div class="d"></div>
+  </div>
+</body>
+</html>

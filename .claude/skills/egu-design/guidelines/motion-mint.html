@@ -1,0 +1,42 @@
+<!-- @dsCard group="Motion" viewport="700x240" name="GRIT mint" subtitle="The celebratory earn moment — strike, sheen, ring, count-up (click to replay)" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<link rel="stylesheet" href="../styles.css">
+<style>
+  body { margin: 0; padding: 26px; background: var(--paper); }
+  .toast { display: inline-flex; align-items: center; gap: 14px; background: var(--paper-card); border: 1px solid var(--gold-dark); border-radius: var(--radius-card); padding: 14px 20px; background-image: var(--glow-card); }
+  .hint { font-family: var(--font-mono); font-size: 10px; color: var(--muted-gold); margin: 14px 0 0; }
+  .dark { background: var(--ticker-bg); border-radius: var(--radius-card); padding: 14px 20px; display: inline-flex; }
+  .row { display: flex; gap: 22px; align-items: center; flex-wrap: wrap; }
+</style>
+</head>
+<body>
+  <div id="root"></div>
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+  <script src="../_ds_bundle.js"></script>
+  <script type="text/babel">
+    const { GritMint } = window.ExtendedGumptionUniverseDesignSystem_a80556;
+    function Loop({ children, every = 3000 }) {
+      const [k, setK] = React.useState(0);
+      React.useEffect(() => { const id = setInterval(() => setK((x) => x + 1), every); return () => clearInterval(id); }, []);
+      return React.cloneElement(children, { key: k });
+    }
+    function Demo() {
+      return (
+        <div>
+          <div className="row">
+            <div className="toast"><Loop><GritMint amount={12} animate={true} /></Loop></div>
+            <div className="dark"><Loop><GritMint amount={4.2} size={64} label="earned" animate={true} style={{ color: '#fff' }} /></Loop></div>
+          </div>
+          <p className="hint">Auto-replays here · in product it respects prefers-reduced-motion · click to replay</p>
+        </div>
+      );
+    }
+    ReactDOM.createRoot(document.getElementById('root')).render(<Demo />);
+  </script>
+</body>
+</html>

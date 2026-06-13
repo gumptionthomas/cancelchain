@@ -1,0 +1,380 @@
+{
+  "plugins": [
+    "react",
+    "import"
+  ],
+  "rules": {
+    "react/forbid-elements": [
+      "warn",
+      {
+        "forbid": []
+      }
+    ],
+    "no-restricted-imports": [
+      "warn",
+      {
+        "patterns": [
+          {
+            "group": [
+              "components/brand/**",
+              "components/core/**",
+              "components/explorer/**",
+              "components/ledger/**",
+              "ui_kits/gumption-hub/**",
+              "ui_kits/gumptionchain-explorer/**"
+            ],
+            "message": "Import design-system components from 'index.js', not component internals."
+          }
+        ]
+      }
+    ],
+    "no-restricted-syntax": [
+      "warn",
+      {
+        "selector": "Literal[value=/#[0-9a-fA-F]{3,8}\\b/]",
+        "message": "Raw hex color — use a design-system color token via var()."
+      },
+      {
+        "selector": "Literal[value=/\\b\\d+px\\b/]",
+        "message": "Raw px value — use a design-system spacing token via var()."
+      },
+      {
+        "selector": "Literal[value=/font-family\\s*:\\s*(?!['\\\"]?(?:Inter|Righteous))/i]",
+        "message": "Font not provided by the design system. Available: Inter, Righteous."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='Button'] > JSXAttribute > JSXIdentifier[name!=/^(?:variant|size|as|children|key|ref|className|style|children)$/]",
+        "message": "<Button> doesn't accept that prop. Declared props: variant, size, as, children."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='Button'] > JSXAttribute[name.name='variant'] > Literal[value!=/^(?:gold|outline-gold|stone)$/]",
+        "message": "<Button> variant must be one of 'gold' | 'outline-gold' | 'stone'."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='Button'] > JSXAttribute[name.name='size'] > Literal[value!=/^(?:sm|md|lg)$/]",
+        "message": "<Button> size must be one of 'sm' | 'md' | 'lg'."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='Button'] > JSXAttribute[name.name='as'] > Literal[value!=/^(?:button|a)$/]",
+        "message": "<Button> as must be one of 'button' | 'a'."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='Card'] > JSXAttribute > JSXIdentifier[name!=/^(?:kicker|title|tagline|teaser|interactive|children|key|ref|className|style|children)$/]",
+        "message": "<Card> doesn't accept that prop. Declared props: kicker, title, tagline, teaser, interactive, children."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='Grit'] > JSXAttribute > JSXIdentifier[name!=/^(?:size|mono|title|key|ref|className|style|children)$/]",
+        "message": "<Grit> doesn't accept that prop. Declared props: size, mono, title."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='GritMint'] > JSXAttribute > JSXIdentifier[name!=/^(?:amount|size|showAmount|label|replayOnClick|animate|key|ref|className|style|children)$/]",
+        "message": "<GritMint> doesn't accept that prop. Declared props: amount, size, showAmount, label, replayOnClick, animate."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='HeroLogo'] > JSXAttribute > JSXIdentifier[name!=/^(?:size|animate|title|key|ref|className|style|children)$/]",
+        "message": "<HeroLogo> doesn't accept that prop. Declared props: size, animate, title."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='KindLabel'] > JSXAttribute > JSXIdentifier[name!=/^(?:kind|children|key|ref|className|style|children)$/]",
+        "message": "<KindLabel> doesn't accept that prop. Declared props: kind, children."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='KindLabel'] > JSXAttribute[name.name='kind'] > Literal[value!=/^(?:support|opposition)$/]",
+        "message": "<KindLabel> kind must be one of 'support' | 'opposition'."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='LedgerRow'] > JSXAttribute > JSXIdentifier[name!=/^(?:subject|support|opposition|href|key|ref|className|style|children)$/]",
+        "message": "<LedgerRow> doesn't accept that prop. Declared props: subject, support, opposition, href."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='NetStance'] > JSXAttribute > JSXIdentifier[name!=/^(?:opposition|support|key|ref|className|style|children)$/]",
+        "message": "<NetStance> doesn't accept that prop. Declared props: opposition, support."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='OutflowBadge'] > JSXAttribute > JSXIdentifier[name!=/^(?:kind|key|ref|className|style|children)$/]",
+        "message": "<OutflowBadge> doesn't accept that prop. Declared props: kind."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='OutflowBadge'] > JSXAttribute[name.name='kind'] > Literal[value!=/^(?:opposition|support|rescind|transfer)$/]",
+        "message": "<OutflowBadge> kind must be one of 'opposition' | 'support' | 'rescind' | 'transfer'."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='Seal'] > JSXAttribute > JSXIdentifier[name!=/^(?:verified|pulsing|size|key|ref|className|style|children)$/]",
+        "message": "<Seal> doesn't accept that prop. Declared props: verified, pulsing, size."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='StatCard'] > JSXAttribute > JSXIdentifier[name!=/^(?:label|value|unit|key|ref|className|style|children)$/]",
+        "message": "<StatCard> doesn't accept that prop. Declared props: label, value, unit."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='TickerItem'] > JSXAttribute > JSXIdentifier[name!=/^(?:kind|subject|amount|signer|age|key|ref|className|style|children)$/]",
+        "message": "<TickerItem> doesn't accept that prop. Declared props: kind, subject, amount, signer, age."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='TickerItem'] > JSXAttribute[name.name='kind'] > Literal[value!=/^(?:support|opposition)$/]",
+        "message": "<TickerItem> kind must be one of 'support' | 'opposition'."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='WordmarkLockup'] > JSXAttribute > JSXIdentifier[name!=/^(?:orientation|size|wordmarkSize|animate|wordmark|key|ref|className|style|children)$/]",
+        "message": "<WordmarkLockup> doesn't accept that prop. Declared props: orientation, size, wordmarkSize, animate, wordmark."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='WordmarkLockup'] > JSXAttribute[name.name='orientation'] > Literal[value!=/^(?:horizontal|stacked)$/]",
+        "message": "<WordmarkLockup> orientation must be one of 'horizontal' | 'stacked'."
+      }
+    ]
+  },
+  "overrides": [
+    {
+      "files": [
+        "**/index.js"
+      ],
+      "rules": {
+        "no-restricted-imports": "off"
+      }
+    }
+  ],
+  "x-omelette": {
+    "components": {
+      "Button": {
+        "replaces": []
+      },
+      "Card": {
+        "replaces": []
+      },
+      "Grit": {
+        "replaces": []
+      },
+      "GritMint": {
+        "replaces": []
+      },
+      "HeroLogo": {
+        "replaces": []
+      },
+      "KindLabel": {
+        "replaces": []
+      },
+      "LedgerRow": {
+        "replaces": []
+      },
+      "NetStance": {
+        "replaces": []
+      },
+      "OutflowBadge": {
+        "replaces": []
+      },
+      "Seal": {
+        "replaces": []
+      },
+      "StatCard": {
+        "replaces": []
+      },
+      "TickerItem": {
+        "replaces": []
+      },
+      "WordmarkLockup": {
+        "replaces": []
+      }
+    },
+    "tokens": [
+      "--band-head",
+      "--bg-card",
+      "--bg-page",
+      "--border-card",
+      "--border-strong",
+      "--bw-hair",
+      "--dark-bg",
+      "--dur-base",
+      "--dur-fast",
+      "--dur-sheen",
+      "--dur-slow",
+      "--dur-ticker",
+      "--ease-in-out",
+      "--ease-linear",
+      "--ease-out",
+      "--ease-stamp",
+      "--focus-ring",
+      "--font-body",
+      "--font-display",
+      "--font-mono",
+      "--fs-body",
+      "--fs-card-title",
+      "--fs-h1",
+      "--fs-h2",
+      "--fs-hero",
+      "--fs-kicker",
+      "--fs-lead",
+      "--fs-sm",
+      "--fs-xs",
+      "--fw-bold",
+      "--fw-regular",
+      "--fw-semibold",
+      "--glow-card",
+      "--glow-card-strong",
+      "--gold",
+      "--gold-dark",
+      "--gold-deep",
+      "--gold-light",
+      "--gumption-green",
+      "--ink",
+      "--lh-body",
+      "--lh-snug",
+      "--lh-tight",
+      "--link",
+      "--link-hover",
+      "--ls-brand",
+      "--ls-heading",
+      "--ls-kicker",
+      "--ls-pulse",
+      "--ls-table",
+      "--muted",
+      "--muted-gold",
+      "--oppose",
+      "--oppose-bar",
+      "--paper",
+      "--paper-card",
+      "--radius",
+      "--radius-card",
+      "--radius-pill",
+      "--radius-sm",
+      "--rule",
+      "--rule-hair",
+      "--rule-soft",
+      "--rule-strong",
+      "--seal-ring",
+      "--shadow-gold-glow",
+      "--shadow-lift",
+      "--shadow-sm",
+      "--space-1",
+      "--space-2",
+      "--space-3",
+      "--space-4",
+      "--space-5",
+      "--space-6",
+      "--space-8",
+      "--stone",
+      "--stone-dark",
+      "--stone-deep",
+      "--support",
+      "--support-bar",
+      "--text-body",
+      "--text-faint",
+      "--text-heading",
+      "--text-muted",
+      "--text-strong",
+      "--ticker-bg",
+      "--ticker-muted",
+      "--ticker-opp",
+      "--ticker-sep",
+      "--ticker-sup",
+      "--w-landing",
+      "--w-ledger",
+      "--w-prose",
+      "--wash",
+      "--wash-soft",
+      "--wash-strong"
+    ],
+    "tokenKinds": {
+      "--gold": "color",
+      "--gold-dark": "color",
+      "--gold-light": "color",
+      "--gold-deep": "color",
+      "--paper": "color",
+      "--paper-card": "color",
+      "--ink": "color",
+      "--muted": "color",
+      "--muted-gold": "color",
+      "--support": "color",
+      "--oppose": "color",
+      "--support-bar": "color",
+      "--oppose-bar": "color",
+      "--gumption-green": "color",
+      "--rule-strong": "color",
+      "--rule": "color",
+      "--rule-soft": "color",
+      "--rule-hair": "color",
+      "--wash-strong": "color",
+      "--wash": "color",
+      "--wash-soft": "color",
+      "--stone": "color",
+      "--stone-dark": "color",
+      "--stone-deep": "color",
+      "--ticker-bg": "color",
+      "--ticker-sup": "color",
+      "--ticker-opp": "color",
+      "--ticker-muted": "color",
+      "--ticker-sep": "color",
+      "--dark-bg": "color",
+      "--bg-page": "color",
+      "--bg-card": "color",
+      "--text-strong": "font",
+      "--text-body": "font",
+      "--text-muted": "font",
+      "--text-faint": "font",
+      "--text-heading": "font",
+      "--link": "color",
+      "--link-hover": "color",
+      "--border-card": "color",
+      "--border-strong": "color",
+      "--focus-ring": "color",
+      "--font-display": "font",
+      "--font-body": "font",
+      "--font-mono": "font",
+      "--fw-regular": "font",
+      "--fw-semibold": "font",
+      "--fw-bold": "font",
+      "--fs-hero": "spacing",
+      "--fs-h1": "spacing",
+      "--fs-h2": "spacing",
+      "--fs-card-title": "spacing",
+      "--fs-lead": "spacing",
+      "--fs-body": "spacing",
+      "--fs-sm": "spacing",
+      "--fs-xs": "spacing",
+      "--fs-kicker": "spacing",
+      "--lh-tight": "font",
+      "--lh-snug": "font",
+      "--lh-body": "font",
+      "--ls-brand": "font",
+      "--ls-kicker": "font",
+      "--ls-heading": "font",
+      "--ls-table": "font",
+      "--ls-pulse": "font",
+      "--space-1": "spacing",
+      "--space-2": "spacing",
+      "--space-3": "spacing",
+      "--space-4": "spacing",
+      "--space-5": "spacing",
+      "--space-6": "spacing",
+      "--space-8": "spacing",
+      "--w-prose": "spacing",
+      "--w-landing": "spacing",
+      "--w-ledger": "spacing",
+      "--radius-sm": "radius",
+      "--radius": "radius",
+      "--radius-card": "radius",
+      "--radius-pill": "radius",
+      "--bw-hair": "spacing",
+      "--glow-card": "shadow",
+      "--glow-card-strong": "shadow",
+      "--band-head": "shadow",
+      "--shadow-sm": "shadow",
+      "--shadow-lift": "shadow",
+      "--shadow-gold-glow": "shadow",
+      "--seal-ring": "shadow",
+      "--dur-fast": "other",
+      "--dur-base": "other",
+      "--dur-slow": "other",
+      "--dur-sheen": "other",
+      "--dur-ticker": "other",
+      "--ease-out": "other",
+      "--ease-in-out": "other",
+      "--ease-stamp": "other",
+      "--ease-linear": "other"
+    },
+    "fontFamilies": [
+      "Inter",
+      "Righteous"
+    ]
+  }
+}

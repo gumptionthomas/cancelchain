@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 140 140" role="img" aria-label="The Extended Gumption Universe">
+  <rect x="4" y="4" width="132" height="132" rx="30" fill="#2a2620"></rect>
+  <circle cx="70" cy="70" r="52" fill="none" stroke="#d4a520" stroke-width="1.5" opacity=".35"></circle>
+  <g fill="none" stroke="#3f9a42" stroke-width="17" stroke-linecap="round">
+    <path d="M104 70 A34 34 0 1 1 94.04 45.94"></path>
+    <path d="M104 70 L70 70"></path>
+  </g>
+  <circle cx="70" cy="18" r="7" fill="#e8c547"></circle>
+  <circle cx="115" cy="96" r="6" fill="#d4a520"></circle>
+  <circle cx="25" cy="96" r="6" fill="#d4a520"></circle>
+</svg>
